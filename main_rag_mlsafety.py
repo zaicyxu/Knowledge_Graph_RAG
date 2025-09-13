@@ -13,6 +13,7 @@
               Prolog fact and rules format standards for subsequent processing.
 """
 
+pip install -r requirements.txt
 import json
 import pickle
 import re
@@ -611,4 +612,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()

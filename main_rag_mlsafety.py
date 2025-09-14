@@ -597,9 +597,10 @@ class Neo4jRAGSystem:
 def main():
     rag_system = Neo4jRAGSystem(
         uri=configuration.NEO4J_URI,
-        user=configuration.NEO4J_USER,
+        user=configuration.NEO4J_USERNAME,
         password=configuration.NEO4J_PASSWORD
     )
+
     try:
         print("Updating embeddings...")
         rag_system.update_embeddings()
@@ -613,4 +614,5 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 

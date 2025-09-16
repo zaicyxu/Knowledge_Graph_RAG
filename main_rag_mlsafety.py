@@ -124,7 +124,6 @@ class Neo4jRAGSystem:
             return None
 
     def extract_keywords(self, query_text, similarity_threshold=0.35):
-        # 更宽松的分词：保留 1-gram 和 2-gram，并保留大写缩写（ML）
         tokens = re.findall(r'\b\w+\b', query_text)
         tokens = [t for t in tokens if
                   t.lower() not in {"the", "a", "an", "is", "are", "what", "which", "how", "does", "do", "to", "in",
@@ -597,7 +596,7 @@ class Neo4jRAGSystem:
 def main():
     rag_system = Neo4jRAGSystem(
         uri=configuration.NEO4J_URI,
-        user=configuration.NEO4J_USERNAME,
+        user=configuration.NEO4J_USER,
         password=configuration.NEO4J_PASSWORD
     )
 
@@ -614,5 +613,6 @@ def main():
 if __name__ == "__main__":
 
     main()
+
 
 

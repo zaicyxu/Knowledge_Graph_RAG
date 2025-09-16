@@ -1,9 +1,17 @@
-# app.py
-"""
-Streamlit GUI for Neo4j RAG Question Answering System.
+# -*- coding: utf-8 -*-
+# !/usr/bin/env python
 
-This script provides a user interface to interact with the
-Neo4jRAGSystem defined in main_rag_mlsafety.py.
+"""
+@Project Name: KnowledgeGraph_RAG
+@File Name: main_rag_mlsafety.py
+@Software: Python
+@Time: Sep/2025
+@Author: Rui Xu
+@Contact: rxu@kth.se
+@Version: 0.1.5
+@Description: Streamlit GUI for Neo4j RAG Question Answering System.
+              This script provides a user interface to interact with the
+              Neo4jRAGSystem defined in main_rag_mlsafety.py.
 """
 
 import streamlit as st
@@ -33,7 +41,7 @@ def clear_chat_history() -> None:
 def main() -> None:
     """Main function to run the Streamlit app."""
     st.set_page_config(page_title="Neo4j RAG QA System", layout="wide")
-    st.title("📚 Neo4j RAG Question Answering System")
+    st.title("Neo4j RAG Question Answering System")
 
     # Initialize RAG system
     rag_system = init_rag_system()
@@ -81,3 +89,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

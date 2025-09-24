@@ -4,7 +4,7 @@
 
 #### Issues from the LLM Sides
 
-1. The Final Answer from LLM is not stable yet. For example, the LLM make final answers, sometimes not regarding the following prompts somtimes contain t.
+1. The Final Answer from LLM is not stable yet. For example, regarding the following prompts, the LLM sometimes make final answers  somtimes nor.
 
 	- Which kind of algorithm has been used in Autonomous braking system?
 	- What kind of functionalities containing this system?

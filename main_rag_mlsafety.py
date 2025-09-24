@@ -535,18 +535,20 @@ class Neo4jRAGSystem:
 
         # prompt engineering
         input_text = f"""
-                    ROLE: You are a Safety-Critical ML System Analyst specializing in Prolog-based reasoning.
+                    ROLE: You are a Safety-Critical ML System Analyst specializing in chain-of-thought reasoning.
                 
                     DOMAIN KNOWLEDGE CONTEXT:
                     - ML Safety Systems involve data flow: Sensors → Algorithms → ML_Flow → Safety Requirements
                     - Safety requirements constrain ML behavior and system functionality
                     - System components must satisfy both functional and safety requirements
+                    - System description contains multiple sensors, functionailities, and algorithms
                 
                     CRITICAL INSTRUCTIONS:
                     1. PRESERVE EXACT FACT SYNTAX: Use the provided Prolog facts exactly as given - no modifications
                     2. SAFETY-FIRST REASONING: Prioritize safety implications in your analysis
                     3. DATA FLOW TRACING: Follow Input/Output/NEXT relationships to trace data paths
                     4. REQUIREMENT SATISFACTION: Check if components satisfy relevant safety requirements
+                    5. DEPENDENCIES TRACING: Retrieve all elements excatly existed the knowledge base 
                 
                     EXTRACTED KEYWORDS: {', '.join(keywords)}
                 
@@ -556,7 +558,7 @@ class Neo4jRAGSystem:
                     REASONING FRAMEWORK:
                     1. Identify key entities mentioned in the question
                     2. Map entities to safety requirements and constraints
-                    3. Trace data flows and functional dependencies
+                    3. Trace dependencies within the system description
                     4. Verify requirement satisfaction conditions
                     5. Provide safety implications analysis
                 
@@ -566,27 +568,32 @@ class Neo4jRAGSystem:
                     - Include detailed safety-aware reasoning
                     - Conclude with safety recommendations if applicable
                 
-                    EXAMPLE PATTERNS:
-                
+                    EXAMPLE PATTERNS: 
+                    Question: "Which kind of algorithm has been used in Autonomous braking system?"
+                    Final Answer:
+                    pointnet__;
+                    yolov5;
+                    
+                    Reasoning: The question is about which algorithm is used in the Autonomous braking system. The knowledge base states that consist(system_description, brakes) and consist(system_description, paeb) which means that the braking system is part of the system description, which also consists of pre-autonomous emergency braking (paeb). include(pointnet__, paeb) indicates that pointnet__ is used by paeb. include(yolov5, paeb) indicates that yolov5 is also used by paeb. Thus, the algorithms pointnet__ and yolov5 are involved in the autonomous braking system (PAEB).
+                    
+                    
                     Question: "What sensors provide data to the anomaly detection flow?"
-                    Answer:
-                    sensors(vibration_sensor).
-                    ml_flow(anomaly_detection).
-                    collect_data(vibration_sensor, anomaly_detection).
+                    Final Answer:
+                    vibration_sensor;
+                    
                 
                     Reasoning: vibration_sensor is a Sensors node connected via Collect_Data relationship to anomaly_detection ML_Flow, indicating it provides input data for anomaly detection processing.
                 
                     Question: "Which safety requirements apply to the prediction algorithm?"
-                    Answer:
-                    algorithms(prediction_engine).
-                    ml_safety_requirement(accuracy_threshold).
-                    input(accuracy_threshold, prediction_engine).
+                    Final Answer:
+                    accuracy_threshold;
+                    prediction_engine
                 
                     Reasoning: accuracy_threshold is an ML_Safety_Requirement connected via Input relationship to prediction_engine algorithm, constraining its operational parameters for safety compliance.
                 
                     USER QUESTION: {user_question}
                 
-                    ANSWER:
+                    Final ANSWER:
                     """
 
         print("\n[OPTIMIZED LLM PROMPT]\n" + input_text)

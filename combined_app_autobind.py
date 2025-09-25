@@ -4,7 +4,7 @@
 """
 Unified Streamlit App (Auto-bound):
 - Tab 1 (LLM): Ask questions via Neo4jRAGSystem. Each non-empty line in Final Answer is selectable.
-- Tab 2 (Graph): The latest selection from Tab 1 is automatically used as the Sensor name.
+- Tab 2 (Graph): The latest selection from Tab 1 is automatically used as the Entity name.
 """
 
 import os
@@ -111,7 +111,7 @@ def llm_tab() -> Optional[str]:
         st.session_state.selected_sensor = None
 
     st.subheader("LLM: Neo4j RAG Question Answering")
-    st.caption("Pick an item from Final Answer; it will auto-fill the Sensor name in the Graph tab.")
+    st.caption("Pick an item from Final Answer; it will auto-fill the Entity name in the Graph tab.")
 
     with st.form("qa_form"):
         q = st.text_area(
@@ -147,7 +147,7 @@ def llm_tab() -> Optional[str]:
             st.session_state.history = []
             st.session_state.selected_sensor = None
     with colB:
-        st.caption(f"Current Sensor from LLM: **{st.session_state.get('selected_sensor') or '—'}**")
+        st.caption(f"Current Entity from LLM: **{st.session_state.get('selected_sensor') or '—'}**")
 
     # Show history and select a Final Answer item
     selected_from_llm: Optional[str] = None
@@ -166,7 +166,7 @@ def llm_tab() -> Optional[str]:
                             options=options,
                             index=0,
                             key=_stable_key("final_select", entry["question"], entry["raw"]),
-                            help="Selecting here immediately sets the Sensor name in the Graph tab."
+                            help="Selecting here immediately sets the Entity name in the Graph tab."
                         )
                         st.caption(f"Selected: {selected}")
                         selected_from_llm = selected
@@ -196,10 +196,10 @@ def llm_tab() -> Optional[str]:
     return st.session_state.get("selected_sensor")
 
 
-def graph_tab(sensor_from_llm: Optional[str]) -> None:
-    """Render Graph/Prolog tab. Sensor name is auto-filled from LLM selection if available."""
+def graph_tab(entity_from_llm: Optional[str]) -> None:
+    """Render Graph/Prolog tab. Entity name is auto-filled from LLM selection if available."""
     st.subheader("Graph: Neo4j ➜ (optional Prolog) ➜ Visualization")
-    st.caption("Sensor name is automatically filled from the LLM tab when you make a selection.")
+    st.caption("Entity name is automatically filled from the LLM tab when you make a selection.")
 
     # Sidebar for connection & options
     with st.sidebar:
@@ -210,9 +210,11 @@ def graph_tab(sensor_from_llm: Optional[str]) -> None:
         database = st.text_input("Database (optional)", value=os.getenv("NEO4J_DB", "")) or None
 
         st.header("Query")
-        sensor_default = sensor_from_llm or "Mono Camera"
+        if type(entity_from_llm) == str:
+            entity_from_llm = entity_from_llm.replace(";", "")
+        sensor_default = entity_from_llm or "Mono Camera"
         # Auto-fill with LLM selection; still editable in case you want to tweak it
-        sensor = st.text_input("Sensor name (auto from LLM)", value=sensor_default, key="graph_sensor_input")
+        sensor = st.text_input("Entity name (auto from LLM)", value=sensor_default, key="graph_sensor_input")
         include_inferred = st.checkbox("Include Prolog inferred edges", value=False)
         show_tables = st.checkbox("Show tables (edges)", value=False)
         rules_path = st.text_input("Prolog rules file", value="Requirement_Prolog.pl")
@@ -221,10 +223,10 @@ def graph_tab(sensor_from_llm: Optional[str]) -> None:
         run_btn = st.button("Run graph query")
 
     if not run_btn:
-        if sensor_from_llm:
-            st.info(f"Sensor from LLM: **{sensor_from_llm}**. Click **Run graph query**.")
+        if entity_from_llm:
+            st.info(f"Entity from LLM: **{entity_from_llm}**. Click **Run graph query**.")
         else:
-            st.info("Tip: Select a Final Answer item in the LLM tab to auto-fill the Sensor name here.")
+            st.info("Tip: Select a Final Answer item in the LLM tab to auto-fill the Entity name here.")
         return
 
     cfg = Neo4jConfig(uri=uri, user=user, password=password, database=database)
@@ -280,13 +282,13 @@ def graph_tab(sensor_from_llm: Optional[str]) -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Unified LLM + Graph App (Auto-bound)", layout="wide")
-    st.title("Unified LLM ➜ Sensor (auto) ➜ Graph App")
+    st.title("Unified LLM ➜ Graph App")
 
     tabs = st.tabs(["LLM (Final Answer ➜ Sensor, auto)", "Graph (Neo4j + Prolog)"])
     with tabs[0]:
-        sensor_from_llm = llm_tab()
+        entity_from_llm = llm_tab()
     with tabs[1]:
-        graph_tab(sensor_from_llm)
+        graph_tab(entity_from_llm)
 
 
 if __name__ == "__main__":

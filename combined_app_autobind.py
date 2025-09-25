@@ -25,6 +25,7 @@ from test_app_fixed import (
     run_cypher_path_query,
     prolog_infer_edges,
     make_nodes_edges,
+    prolog_load_rules
 )
 try:
     from streamlit_agraph import agraph, Node, Edge, Config
@@ -253,12 +254,24 @@ def graph_tab(entity_from_llm: Optional[str]) -> None:
     inferred_edges: List[Tuple[str, str, str]] = []
     if include_inferred:
         try:
-            inferred_edges = prolog_infer_edges(base_edges, rules_path=rules_path)
-            st.success(f"Prolog inferred {len(inferred_edges)} edges.")
-            _, edges_inf = make_nodes_edges(inferred_edges)
-            edges.extend(edges_inf)
+            if not os.path.exists(rules_path):
+                st.warning(f"Prolog file not found: {rules_path}. Skipping inference.")
+            else:
+                pl = prolog_load_rules(rules_path)
+                if pl is None:
+                    st.info("pyswip not installed or SWI-Prolog not available. Skipping inference.")
+                else:
+                    inferred_edges = prolog_infer_edges(pl,sensor)
+                    # merge into graph
+                    for s, r, t in inferred_edges:
+                        if s not in nodes:
+                            nodes[s] = Node(id=s, label=s, size=15)
+                        if t not in nodes:
+                            nodes[t] = Node(id=t, label=t, size=15)
+                        edges.append(Edge(source=s, target=t, label=r,dashes=True,color="red", width=2,))
+                    st.success(f"Added {len(inferred_edges)} inferred edges from Prolog.")
         except Exception as e:
-            st.error(f"Prolog step failed: {e}")
+            st.error(f"Prolog reasoning failed: {e}")
 
     if agraph is None or Config is None:
         st.error("streamlit-agraph is not installed. `pip install streamlit-agraph`")

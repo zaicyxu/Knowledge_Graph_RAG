@@ -501,8 +501,8 @@ class Neo4jRAGSystem:
                     else:
                         raw_e1_label = t
                 e1_type = self._label_to_prolog_predicate(raw_e1_label)
-                prolog_facts.append(f"{e1_type}({e1_name}).")
-
+                # prolog_facts.append(f"{e1_type}({e1_name}).")
+                prolog_facts.append(f"{e1_type}({raw_n1_name}).")
                 # Process connected nodes and relationships
                 connected = entity.get('connected_nodes') or []
                 relations = entity.get('relations') or []
@@ -520,7 +520,8 @@ class Neo4jRAGSystem:
                         else:
                             raw_e2_label = t2
                     e2_type = self._label_to_prolog_predicate(raw_e2_label)
-                    prolog_facts.append(f"{e2_type}({e2_name}).")
+                    # prolog_facts.append(f"{e2_type}({e2_name}).")
+                    prolog_facts.append(f"{e2_type}({raw_n2_name}).")
 
                     if idx < len(relations):
                         relation_raw = relations[idx]
@@ -571,22 +572,22 @@ class Neo4jRAGSystem:
                     EXAMPLE PATTERNS: 
                     Question: "Which kind of algorithm has been used in Autonomous braking system?"
                     Final Answer:
-                    pointnet__;
-                    yolov5;
+                    pointnet__
+                    yolov5
                     
                     Reasoning: The question is about which algorithm is used in the Autonomous braking system. The knowledge base states that consist(system_description, brakes) and consist(system_description, paeb) which means that the braking system is part of the system description, which also consists of pre-autonomous emergency braking (paeb). include(pointnet__, paeb) indicates that pointnet__ is used by paeb. include(yolov5, paeb) indicates that yolov5 is also used by paeb. Thus, the algorithms pointnet__ and yolov5 are involved in the autonomous braking system (PAEB).
                     
                     
                     Question: "What sensors provide data to the anomaly detection flow?"
                     Final Answer:
-                    vibration_sensor;
+                    vibration_sensor
                     
                 
                     Reasoning: vibration_sensor is a Sensors node connected via Collect_Data relationship to anomaly_detection ML_Flow, indicating it provides input data for anomaly detection processing.
                 
                     Question: "Which safety requirements apply to the prediction algorithm?"
                     Final Answer:
-                    accuracy_threshold;
+                    accuracy_threshold
                     prediction_engine
                 
                     Reasoning: accuracy_threshold is an ML_Safety_Requirement connected via Input relationship to prediction_engine algorithm, constraining its operational parameters for safety compliance.

@@ -251,7 +251,7 @@ def main() -> None:
         database = st.text_input("Database (optional)", value=os.getenv("NEO4J_DB", "")) or None
 
         st.header("Query")
-        sensor = st.text_input("Sensor name", value="Mono Camera")
+        sensor = st.text_input("Entity name", value="Mono Camera")
         include_inferred = st.checkbox("Include Prolog inferred edges", value=False)
         rules_path = st.text_input("Prolog file", value="Requirement_Prolog.pl")
         show_tables = st.checkbox("Show tables", value=True)

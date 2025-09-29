@@ -79,18 +79,38 @@ def get_driver(cfg: Neo4jConfig) -> Driver:
 
 def run_cypher_path_query(session: Session, sensor_name: str) -> List[Tuple[str, str, str]]:
     """Return edges as (source, rel_type, target) from a variable-length path query."""
+    # cypher = """
+    # MATCH p = (m:Sensors {name: $sensor})-[*]->(n:ML_Safety_Requirement)
+    # WITH nodes(p) AS nds, relationships(p) AS rels
+    # UNWIND range(0, size(rels)-1) AS i
+    # RETURN
+    #   nds[i].name             AS source,
+    #   type(rels[i])           AS rel_type,
+    #   nds[i+1].name           AS target
+    # ORDER BY i
+    # """
+    
     cypher = """
-    MATCH p = (m:Sensors {name: $sensor})-[*]->(n:ML_Safety_Requirement)
+    MATCH p =  (m {name: $sensor})-[*]->(n:System_Description)
     WITH nodes(p) AS nds, relationships(p) AS rels
     UNWIND range(0, size(rels)-1) AS i
     RETURN
-      nds[i].name             AS source,
-      type(rels[i])           AS rel_type,
-      nds[i+1].name           AS target
+      nds[i].name               AS source,
+      labels(nds[i])            AS source_type,
+      type(rels[i])             AS rel_type,
+      nds[i+1].name             AS target,
+      labels(nds[i+1])          AS target_type
     ORDER BY i
     """
+    
+    cypher_type = """
+    MATCH (m {name: $sensor})
+    return labels(m) as label
+    """
+    
     rows = session.run(cypher, sensor=sensor_name)
-    return [(r["source"], r["rel_type"], r["target"]) for r in rows]
+    rows_types = session.run(cypher_type, sensor=sensor_name)
+    return [(r["source"], r["rel_type"], r["target"]) for r in rows], [r["label"] for r in rows_types]
 
 
 # === Prolog helpers ===========================================================
@@ -122,7 +142,7 @@ def prolog_find_inferred(pl: object) -> List[Tuple[str, str, str]]:
     return inferred
 
 
-def prolog_infer_edges(prolog,initial_values) -> List[Tuple[str, str, str]]:
+def prolog_infer_edges(prolog,initial_values, initial_type) -> List[Tuple[str, str, str]]:
     """
     Query predicates that exist in Requirement_Modify.* and convert to labeled edges.
     Returns a list of (source, relation, target).
@@ -150,19 +170,68 @@ def prolog_infer_edges(prolog,initial_values) -> List[Tuple[str, str, str]]:
         # initial_list = 
         temporal_list = list(set(temporal_list))
         return temporal_list
+    
+    if 'Sensors' in initial_type[0]:
+        sensor_list = initial_list
+        requirement_check = "req_related_sensor(Req, '{}')"
+        requirement_list = _relationship_investigate(sensor_list,requirement_check,"Req","REQ_SENSOR")        
+            
+            
+        # requirement_check = "req_related_sensor(Req, '{}')"
+        # requirement_list = _relationship_investigate(sensor_list,requirement_check,"Req","REQ_SENSOR")
         
-    requirement_check = "req_related_sensor(Req, '{}')"
-    requirement_list = _relationship_investigate(initial_list,requirement_check,"Req","REQ_SENSOR")
-    
-    component_check = "traces_to_requirement(C, '{}')"
-    component_list = _relationship_investigate(requirement_list,component_check,"C","TRACES_TO")    
-    
-    
-    algorithm_check = "req_related_algorithm('{}', A)"
-    algorithm_list = _relationship_investigate(requirement_list,algorithm_check,"A","REQ_ALG")  
-    
-    model_check = "req_related_model('{}', M)"
-    model_list = _relationship_investigate(requirement_list,model_check,"M","REQ_MODEL")  
+        component_check = "traces_to_requirement(C, '{}')"
+        component_list = _relationship_investigate(requirement_list,component_check,"C","REQ_COMP")    
+        
+        
+        algorithm_check = "req_related_algorithm('{}', A)"
+        algorithm_list = _relationship_investigate(requirement_list,algorithm_check,"A","REQ_ALG")  
+        
+        model_check = "req_related_model('{}', M)"
+        model_list = _relationship_investigate(requirement_list,model_check,"M","REQ_MODEL")  
+        
+        
+ #### To do list ####       
+    if 'Algorithm' in initial_type[0]:
+        algorithm_list = initial_list
+        
+        algorithm_check = "req_related_algorithm(Req, '{}')"
+        requirement_list = _relationship_investigate(algorithm_list,algorithm_check,"Req","REQ_ALG")  
+        
+        sensor_check = "req_related_sensor('{}', S)"
+        sensor_list = _relationship_investigate(requirement_list,sensor_check,"S","REQ_SENSOR")        
+            
+            
+        # requirement_check = "req_related_sensor(Req, '{}')"
+        # requirement_list = _relationship_investigate(sensor_list,requirement_check,"Req","REQ_SENSOR")
+        
+        component_check = "traces_to_requirement(C, '{}')"
+        component_list = _relationship_investigate(requirement_list,component_check,"C","REQ_COMP")    
+
+        model_check = "req_related_model('{}', M)"
+        model_list = _relationship_investigate(requirement_list,model_check,"M","REQ_MODEL")  
+        
+        
+    if 'Component' in initial_type[0]:
+        component_list = initial_list
+        
+        component_check = "traces_to_requirement('{}', Req)"
+        requirement_list = _relationship_investigate(component_list,component_check,"Req","REQ_COMP") 
+        
+        algorithm_check = "req_related_algorithm(Req, '{}')"
+        algorithm_list = _relationship_investigate(requirement_list,algorithm_check,"A","REQ_ALG")  
+        
+        sensor_check = "req_related_sensor('{}', S)"
+        sensor_list = _relationship_investigate(requirement_list,sensor_check,"S","REQ_SENSOR")        
+            
+            
+        # requirement_check = "req_related_sensor(Req, '{}')"
+        # requirement_list = _relationship_investigate(sensor_list,requirement_check,"Req","REQ_SENSOR")  
+
+        model_check = "req_related_model('{}', M)"
+        model_list = _relationship_investigate(requirement_list,model_check,"M","REQ_MODEL")  
+        
+
     
     # requirement_list = []
     # Requirement -> Sensor / Algorithm / Model
@@ -265,7 +334,7 @@ def main() -> None:
             cfg = Neo4jConfig(uri=uri, user=user, password=password, database=database)
             driver = get_driver(cfg)
             with driver.session(database=database) as session:
-                base_edges = run_cypher_path_query(session, sensor_name=sensor)
+                base_edges, base_type = run_cypher_path_query(session, sensor_name=sensor)
             st.success(f"Fetched {len(base_edges)} base edges from Neo4j.")
         except Exception as e:
             st.error(f"Neo4j step failed: {e}")
@@ -285,14 +354,14 @@ def main() -> None:
                     if pl is None:
                         st.info("pyswip not installed or SWI-Prolog not available. Skipping inference.")
                     else:
-                        inferred_edges = prolog_infer_edges(pl,sensor)
+                        inferred_edges = prolog_infer_edges(pl,sensor,base_type)
                         # merge into graph
                         for s, r, t in inferred_edges:
                             if s not in nodes:
                                 nodes[s] = Node(id=s, label=s, size=15)
                             if t not in nodes:
                                 nodes[t] = Node(id=t, label=t, size=15)
-                            edges.append(Edge(source=s, target=t, label=r,dashes=True,color="red", width=2,))
+                            edges.append(Edge(source=s, target=t, label=r,dashes=True,color="red", width=2,arrows=""))
                         st.success(f"Added {len(inferred_edges)} inferred edges from Prolog.")
             except Exception as e:
                 st.error(f"Prolog reasoning failed: {e}")
@@ -320,3 +389,10 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    
+    # uri = "bolt://localhost:7687"
+    # user = "neo4j"
+    # password = "12345678"
+    # driver = GraphDatabase.driver(uri, auth=(user, password))
+    # session = driver.session()
+

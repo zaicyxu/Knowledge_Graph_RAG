@@ -9,7 +9,7 @@
 @Time: Sep/2025
 @Author: Rui Xu
 @Contact: rxu@kth.se
-@Version: 0.2.4
+@Version: 0.2.5
 @Description: Based on the original RAG system, the output format was modified to conform to the
               Prolog fact and rules format standards for subsequent processing.
 """

@@ -9,7 +9,7 @@
 @Time: Sep/2025
 @Author: Rui Xu
 @Contact: rxu@kth.se
-@Version: 0.2.5
+@Version: 0.2.6
 @Description: Based on the original RAG system, the output format was modified to conform to the
               Prolog fact and rules format standards for subsequent processing.
 """
@@ -228,37 +228,37 @@ class Neo4jRAGSystem:
 
         system_prompt = """
                         You are an AI assistant specialized in Machine Learning Safety knowledge graph queries.
-                    
+
                         DOMAIN CONTEXT:
                         - This is an ML Safety knowledge graph focusing on safety-critical systems
                         - Core components: Sensors, algorithms, ML_Flow, Safety_Requirements
                         - Data flow: Sensors → Collect_Data → algorithms → ML_Flow → Safety_Requirements
-                    
+
                         ENTITY HIERARCHY:
                         1. System Level: System_Description, System_Safety_Requirement
                         2. ML Pipeline: ML_Flow, algorithms, Sensors, actuators
                         3. Safety Requirements: ML_Safety_Requirement, functional, functionalility
                         4. Components: Sensors, actuators, algorithms
-                    
+
                         RELATIONSHIP SEMANTICS:
                         - NEXT: Sequential flow between ML_Flow components
                         - Input/Output: Data flow direction
                         - Consist/Include: Composition relationships
                         - Serve: Functional serving relationships
                         - Collect_Data: Sensor data collection
-                    
+
                         QUERY PATTERN EXAMPLES:
                         - "Which sensors feed data to anomaly detection flow?" → Sensors + Collect_Data + ML_Flow
                         - "What safety requirements apply to the prediction algorithm?" → ML_Safety_Requirement + algorithms
                         - "Show the ML flow sequence for system X" → ML_Flow + NEXT relationships
-                    
+
                         Extract query intent in JSON format:
                         {
                             "entities": ["primary_entity", "secondary_entity"],
                             "relationships": ["key_relationship", "supporting_relationship"],
                             "filters": {"property": "value", "name_contains": "keyword"}
                         }
-                    
+
                         Focus on safety and data flow aspects of the query.
                         """
 
@@ -475,7 +475,6 @@ class Neo4jRAGSystem:
             return text
         return f"'{text}'"
 
-
     def _label_to_prolog_predicate(self, label):
         """
         Convert a graph label or relation name into a safe Prolog predicate name.
@@ -558,110 +557,74 @@ class Neo4jRAGSystem:
 
         # prompt engineering
         input_text = f"""
-                    ROLE: You are a Safety-Critical ML System Analyst specializing in chain-of-thought reasoning.
-                    Your task is to analyze queries on ML Safety Knowledge Graphs, extract relevant entities and relationships, 
-                    and present human-readable results with explicit safety implications.
-                    
-                    DOMAIN KNOWLEDGE CONTEXT:
-                    - ML Safety Systems involve data flow: Sensors → Algorithms → ML_Flow → Safety Requirements
-                    - Safety requirements constrain ML behavior and system functionality
-                    - System components must satisfy both functional and safety requirements
-                    - The system description may contain multiple sensors, functionalities, and algorithms
-                    
-                    CRITICAL INSTRUCTIONS:
-                    1. Use the retrieved knowledge base facts as the basis (do not invent new facts).
-                    2. Provide **human-readable results list** of the most relevant entities/requirements.
-                    3. Perform **step-by-step chain-of-thought reasoning**: show how the facts lead to the conclusion.
-                    4. Explicitly state **safety implications** (e.g., what risks are mitigated, what requirements are enforced).
-                    5. End with **safety recommendations** if applicable.
-                    
-                    EXTRACTED KEYWORDS: {keywords}
-                    
-                    KNOWLEDGE BASE FACTS (retrieved from graph):
+                    ROLE: You are a Machine Learning Safety Analyst working with a knowledge graph represented as Prolog facts.
+            
+                    OBJECTIVE:
+                    Answer the user's question using ONLY the provided Prolog facts.
+                    Each fact represents a relationship between entities (e.g., collect_data(sensor, flow)).
+                    You must reason step-by-step to find relevant entities and their safety implications.
+            
+                    IMPORTANT RULES:
+                    - Do NOT invent facts that are not in the list.
+                    - Base your reasoning strictly on the logic implied by the Prolog predicates.
+                    - Use clear, structured sections for the answer.
+                    - Always provide human-readable names for entities (from the fact arguments).
+                    - Focus on safety-related meaning, risks, and system dependencies.
+            
+                    USER QUESTION:
+                    {user_question}
+            
+                    KEYWORDS (from semantic analysis):
+                    {keywords}
+            
+                    PROLOG FACTS (retrieved from the knowledge graph):
                     {facts_str}
-                    
-                    REASONING FRAMEWORK:
-                    1. Identify key entities mentioned in the question
-                    2. Trace their connections (Sensors → Algorithms → ML_Flow → Safety_Requirements)
-                    3. Explain dependencies and functional roles
-                    4. Highlight safety requirements or risks
-                    5. Conclude with final human-readable results and safety recommendations
-                    
-                    ANSWER FORMAT REQUIREMENTS:
-                    - Start with **Results List** (only the names of relevant nodes)
-                    - Follow with **Reasoning** (explain how the result was derived from the graph facts)
-                    - Add **Safety Implications** (e.g., what safety constraints are satisfied)
-                    - Conclude with **Recommendations** (optional)
-                    
-                    ---
-                    
-                    ### FEW-SHOT EXAMPLES
-                    
-                    **Example 1**
-                    Question: "Which kind of algorithm has been used in the Autonomous braking system?"
-                    
+            
+                    REASONING TEMPLATE:
+                    1. Identify relevant entities and relationships that answer the question.
+                    2. Trace connections across data flow: Sensors → Algorithms → ML_Flow → Safety_Requirements.
+                    3. Derive functional dependencies and constraints.
+                    4. Explain how these relations imply safety requirements or risks.
+                    5. Conclude with a short recommendation.
+            
+                    OUTPUT FORMAT:
                     Results:
-                    - pointnet__
-                    - yolov5
-                    
-                    Reasoning:  
-                    The braking system is part of the system description, which also includes pre-autonomous emergency braking (PAEB).  
-                    The facts indicate that `include(pointnet__, paeb)` and `include(yolov5, paeb)`.  
-                    Thus, both `pointnet__` and `yolov5` are algorithms used in the Autonomous braking system.  
-                    
-                    Safety Implications:  
-                    The use of multiple algorithms increases redundancy but also introduces potential inconsistency risks.  
-                    
-                    Recommendations:  
-                    Ensure that both algorithms are validated against braking safety requirements.
-                    
-                    ---
-                    
-                    **Example 2**
-                    Question: "What sensors provide data to the anomaly detection flow?"
-                    
+                    - [list of relevant entities]
+            
+                    Reasoning:
+                    - [logical explanation based on Prolog facts]
+            
+                    Safety Implications:
+                    - [explanation of risks or compliance points]
+            
+                    Recommendations:
+                    - [optional safety improvements or checks]
+            
+                    EXAMPLE:
+                    Question: Which sensors provide data to the anomaly detection flow?
+                    Facts:
+                    collect_data(vibration_sensor, anomaly_detection).
+            
                     Results:
                     - vibration_sensor
-                    
-                    Reasoning:  
-                    The knowledge base shows that `collect_data(vibration_sensor, anomaly_detection)` holds.  
-                    Thus, the vibration_sensor provides input data to the anomaly detection ML_Flow.  
-                    
-                    Safety Implications:  
-                    The accuracy of anomaly detection depends on reliable vibration_sensor data.  
-                    
-                    Recommendations:  
-                    Implement sensor health monitoring to ensure anomaly detection reliability.
-                    
-                    ---
-                    
-                    **Example 3**
-                    Question: "Which safety requirements apply to the prediction algorithm?"
-                    
-                    Results:
-                    - accuracy_threshold
-                    - prediction_engine
-                    
-                    Reasoning:  
-                    The knowledge base shows that `input(accuracy_threshold, prediction_engine)`.  
-                    This means the prediction_engine algorithm must comply with the accuracy_threshold requirement.  
-                    
-                    Safety Implications:  
-                    Safety depends on maintaining the accuracy threshold; if it fails, predictions may be unsafe.  
-                    
-                    Recommendations:  
-                    Introduce runtime monitoring to ensure accuracy remains above threshold.
-                    
-                    ---
-                    
-                    USER QUESTION: {user_question}
-                    
+            
+                    Reasoning:
+                    - The fact shows that vibration_sensor is directly connected to anomaly_detection via collect_data.
+                      Therefore, the vibration_sensor provides data to the anomaly detection flow.
+            
+                    Safety Implications:
+                    - The accuracy of anomaly detection depends on reliable vibration_sensor data.
+            
+                    Recommendations:
+                    - Implement sensor health monitoring to ensure anomaly detection reliability.
+            
+                    NOW, answer the following question strictly based on the provided facts.
                     Final Answer:
-
                     """
 
         print("\n[OPTIMIZED LLM PROMPT]\n" + input_text)
         return self.generate_with_llm(input_text)
+
     def generate_with_llm(self, input_text):
         """Generate response using Gemini LLM with output cleaning."""
         try:
@@ -730,44 +693,34 @@ class Neo4jRAGSystem:
             "source": raw_entity.get("source")
         }
 
-
     def clean_response(self, text):
-        """
-        Robustly clean LLM output from Markdown artifacts and normalize wrapping/line breaks.
-        Keeps content but strips common Markdown syntax that causes inconsistent wrapping.
-        """
+        """Clean and structure LLM output into consistent labeled sections."""
         if not text:
             return ""
 
-        # Normalize newlines
+        # Basic cleanup
         text = text.replace('\r\n', '\n').replace('\r', '\n')
-
-        # Remove fenced code block markers ``` but keep their inner text (if any)
         text = re.sub(r'```+', '', text)
-
-        # Remove inline code ticks but keep content inside
         text = re.sub(r'`([^`]*)`', r'\1', text)
-
-        # Remove headings (#, ##, etc.) but keep text
         text = re.sub(r'^\s{0,3}#{1,6}\s*', '', text, flags=re.MULTILINE)
-
-        # Remove bold/italic markers but keep content
         text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
         text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
-
-        # Normalize list markers: -, *, +, or "1. " -> "- "
-        text = re.sub(r'^\s*[\*\-\+]\s+', '- ', text, flags=re.MULTILINE)
-        text = re.sub(r'^\s*\d+\.\s+', '- ', text, flags=re.MULTILINE)
-
-        # Convert multiple blank lines into a single blank line
         text = re.sub(r'\n\s*\n+', '\n\n', text)
 
-        # Trim trailing spaces on each line and strip overall
-        lines = [ln.rstrip() for ln in text.split('\n')]
-        text = '\n'.join(lines).strip()
+        # Normalize bullets
+        text = re.sub(r'^\s*[\-\+\*]\s+', '- ', text, flags=re.MULTILINE)
+        text = re.sub(r'^\s*\d+\.\s+', '- ', text, flags=re.MULTILINE)
 
-        return text
+        # Enforce 4-section format if missing headers
+        headers = ["Results", "Reasoning", "Safety Implications", "Recommendations"]
+        output = []
+        for h in headers:
+            pattern = rf"(?i)^{h}\s*:\s*(.*?)(?=\n[A-Z][a-z]+:|\Z)"
+            match = re.search(pattern, text, flags=re.S)
+            section = match.group(1).strip() if match else "N/A"
+            output.append(f"{h}:\n{section.strip()}\n")
 
+        return "\n\n".join(output).strip()
 
     def rag_pipeline(self, user_question):
         """Execute the RAG pipeline with embedding-based retrieval and in-context learning."""

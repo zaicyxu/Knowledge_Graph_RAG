@@ -63,17 +63,17 @@ Merge (brakes:actuators {
 
 // Define main functional descriptions.....
 
-Merge (AEB:functionalility {
+Merge (AEB:Component {
   name: "PAEB",
   type: "Functional View"
 })
 
-Merge (LaneKeeping:functionalility {
+Merge (LaneKeeping:Component {
   name: "Lane Keeping",
   type: "Functional View"
 })
 
-Merge (ACC:functionalility {
+Merge (ACC:Component {
   name: "Adaptive Cruise Control",
   type: "Functional View"
 })
@@ -81,23 +81,23 @@ Merge (ACC:functionalility {
 
 // Define main ML blocks descriptions.....
 
-Merge (LaneDetection:functionalility {
+Merge (LaneDetection:Algorithm {
   name: "Lane Detection",
   type: "Functional View"
 })
-Merge (ObjectDetection:functionalility {
+Merge (ObjectDetection:Algorithm {
   name: "Object Detection",
   type: "Functional View"
 })
-Merge (ObjectTracking:functionalility {
+Merge (ObjectTracking:Algorithm {
   name: "Object Tracking",
   type: "Functional View"
 })
-Merge (SemanticSegmantiation:functionalility {
+Merge (SemanticSegmantiation:Algorithm {
   name: "Semantic Segmantiation",
   type: "Functional View"
 })
-Merge (TrajectoryPrediction:functionalility {
+Merge (TrajectoryPrediction:Algorithm {
   name: "Trajectory Prediction",
   type: "Functional View"
 })
@@ -105,30 +105,30 @@ Merge (TrajectoryPrediction:functionalility {
 // Define the ML description.....
 
     // Object Detection
-Merge (YOLO:algorithms {
+Merge (YOLO:Model {
   name: "YOLOv5",
   type: "ML Component"
 })
     // Object Tracking
-Merge (TransTrack:algorithms {
+Merge (TransTrack:Model {
   name: "TransTrack",
   type: "ML Component"
 })
 
     // Trajectory Prediction 
-Merge (Social:algorithms {
+Merge (Social:Model {
   name: "Social-LSTM",
   type: "ML Component"
 })
 
     // Semantic Segmantiation 
-Merge (PointNet:algorithms {
+Merge (PointNet:Model {
   name: "PointNet++",
   type: "ML Component"
 })
 
     // Lane Tracking
-Merge (ENet:algorithms {
+Merge (ENet:Model {
   name: "ENet-SAD",
   type: "ML Component"
 })

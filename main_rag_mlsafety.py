@@ -558,11 +558,25 @@ class Neo4jRAGSystem:
             1. Identify and summarize the key safety requirements relevant to the input question.
             2. Analyze the knowledge base to extract all evidence and relations that support or describe these safety requirements.
             3. Evaluate whether the described system satisfies each requirement, citing explicit elements or facts from the knowledge base.
-            4. DEPENDENCY TRACING: For every safety requirement, list all directly referenced elements or entities that appear *exactly* in the knowledge base (no fabricated or inferred data).
+            4. DEPENDENCY TRACING: For every  requirement, list all directly referenced elements or entities that appear *exactly* in the knowledge base (no fabricated or inferred data) by their types.\
+                For example, the traced elements include algorithm(Object Tracking),consist(Object Tracking, Adaptive Cruise Control)
+                List all directly referenced single elements or entities (e.g., algorithm(Object Tracking)) that appear exactly in the knowledge base.
+                exclude compound facts or relations (e.g., consist(Object Tracking, Adaptive Cruise Control),collect_data(Object Tracking, Mono Camera)), because they contain multiple elements.
             5. Provide a clear final answer that only includes the Dependency-traced elements within the knowledge base.
-            6. Based on the retrieved  Dependency-traced elements, generate the rules following the prolog grammar by using the name of elements (do not rewrite the names).
+            6. Based on the retrieved  Dependency-traced elements, generate the rules between the input requirements and the traced elements following the prolog grammar by using the name of elements.\
+                Do not change the name when generating the prolog code. For example Lidar should be 'Lidar'.
+            7. For example, given a requirement  from the input prompts, we firstly give a nickname such as Req-A and then make it as fact Req(Req-A)
+            then the schemas of the ruls should look like as follows: 
+                requirement_model( Req-A Model Name).
+                requirement_algorithm( Req-A Algorithm Name).
+                rrequirement_sensor( Req-A, Sensor Name).
+                
+            To this end, the rulese should desribe the above relationships as follows:
+                req_related_sensor(Req, S) :- requirement(Req), requirement_sensor(Req, S).
+
             OUTPUT FORMAT:
-            - **Dependency Trace (Exact Elements)**       
+            - **Dependency Trace of listing all directly referenced single elements or entities (Exact Elements by their types)**       
+            
             - ** The Prolog-based Rules **        
                     
                     USER QUESTION: {user_question}

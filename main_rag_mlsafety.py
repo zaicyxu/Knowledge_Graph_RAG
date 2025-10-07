@@ -220,54 +220,58 @@ class Neo4jRAGSystem:
                 wh_score * configuration.WH_WORD_WEIGHT +
                 clause_score * configuration.CLAUSE_WEIGHT)
 
-    def analyze_query_intent_with_LLM(self, query_text):
-        """
-        Parse query intent through LLM to extract target entities, relationships, and filter conditions.
-        Optimized for the specific MLSafety knowledge graph structure.
-        """
 
-        system_prompt = """
-                        You are an AI assistant specialized in Machine Learning Safety knowledge graph queries.
-                    
-                        DOMAIN CONTEXT:
-                        - This is an ML Safety knowledge graph focusing on safety-critical systems
-                        - Core components: Sensors, algorithms, ML_Flow, Safety_Requirements
-                        - Data flow: Sensors → Collect_Data → algorithms → ML_Flow → Safety_Requirements
-                    
-                        ENTITY HIERARCHY:
-                        1. System Level: System_Description, System_Safety_Requirement
-                        2. ML Pipeline: ML_Flow, algorithms, Sensors, actuators
-                        3. Safety Requirements: ML_Safety_Requirement, functional, functionalility
-                        4. Components: Sensors, actuators, algorithms
-                    
-                        RELATIONSHIP SEMANTICS:
-                        - NEXT: Sequential flow between ML_Flow components
-                        - Input/Output: Data flow direction
-                        - Consist/Include: Composition relationships
-                        - Serve: Functional serving relationships
-                        - Collect_Data: Sensor data collection
-                    
-                        QUERY PATTERN EXAMPLES:
-                        - "Which sensors feed data to anomaly detection flow?" → Sensors + Collect_Data + ML_Flow
-                        - "What safety requirements apply to the prediction algorithm?" → ML_Safety_Requirement + algorithms
-                        - "Show the ML flow sequence for system X" → ML_Flow + NEXT relationships
-                    
-                        Extract query intent in JSON format:
-                        {
-                            "entities": ["primary_entity", "secondary_entity"],
-                            "relationships": ["key_relationship", "supporting_relationship"],
-                            "filters": {"property": "value", "name_contains": "keyword"}
-                        }
-                    
-                        Focus on safety and data flow aspects of the query.
-                        """
+##### This function is not used #####
 
-        response = model.generate_content(system_prompt + "\nUser question: " + query_text)
+    # def analyze_query_intent_with_LLM(self, query_text):
+    #     """
+    #     Parse query intent through LLM to extract target entities, relationships, and filter conditions.
+    #     Optimized for the specific MLSafety knowledge graph structure.
+    #     """
 
-        try:
-            return json.loads(response.text)
-        except Exception:
-            return {"entities": [], "relationships": [], "filters": {}}
+    #     system_prompt = """
+    #                     You are an AI assistant specialized in analzying the system models structured as Neo4j.
+                    
+    #                     DOMAIN CONTEXT:
+    #                     - This is a knowledge base focusing on safety-critical systems
+    #                     - Core Elements: Sensors, Algorithms, Functionalities, Models, components
+    #                     - Data flow: Sensors → Collect_Data → algorithms → ML_Flow → Safety_Requirements
+                    
+    #                     ENTITY HIERARCHY:
+    #                     1. System Level: System_Description, System_Safety_Requirement
+    #                     2. ML Pipeline: ML_Flow, algorithms, Sensors, actuators
+    #                     3. Safety Requirements: ML_Safety_Requirement, functional, functionalility
+    #                     4. Components: Sensors, actuators, algorithms
+                    
+    #                     RELATIONSHIP SEMANTICS:
+    #                     - NEXT: Sequential flow between ML_Flow components
+    #                     - Input/Output: Data flow direction
+    #                     - Consist/Include: Composition relationships
+    #                     - Serve: Functional serving relationships
+    #                     - Collect_Data: Sensor data collection
+                    
+    #                     QUERY PATTERN EXAMPLES:
+    #                     - "Which sensors feed data to anomaly detection flow?" → Sensors + Collect_Data + ML_Flow
+    #                     - "What safety requirements apply to the prediction algorithm?" → ML_Safety_Requirement + algorithms
+    #                     - "Show the ML flow sequence for system X" → ML_Flow + NEXT relationships
+                    
+    #                     Extract query intent in JSON format:
+    #                     {
+    #                         "entities": ["primary_entity", "secondary_entity"],
+    #                         "relationships": ["key_relationship", "supporting_relationship"],
+    #                         "filters": {"property": "value", "name_contains": "keyword"}
+    #                     }
+                    
+    #                     Focus on safety and data flow aspects of the query.
+    #                     """
+
+    #     response = model.generate_content(system_prompt + "\nUser question: " + query_text)
+
+    #     try:
+    #         return json.loads(response.text)
+    #     except Exception:
+    #         return {"entities": [], "relationships": [], "filters": {}}
+#################################################################################
 
     def retrieve_relevant_entities(self, query_text, top_k=configuration.TOP_K_RESULTS,
                                    similarity_threshold=configuration.SIMILARITY_THRESHOLD,
@@ -526,7 +530,7 @@ class Neo4jRAGSystem:
                     if idx < len(relations):
                         relation_raw = relations[idx]
                         relation_pred = self._label_to_prolog_predicate(relation_raw)
-                        prolog_facts.append(f"{relation_pred}({e1_name}, {e2_name}).")
+                        prolog_facts.append(f"{relation_pred}({raw_n1_name}, {raw_n2_name}).")
 
             except Exception as e:
                 print(f"[WARN] Skipping malformed entity: {e}")
@@ -534,70 +538,40 @@ class Neo4jRAGSystem:
 
         prolog_facts = sorted(set(prolog_facts))
 
+
+                    # 5. Verify requirement satisfaction conditions
+                    # 6. Provide safety implications analysis
+                    
+                                    
+                    # KNOWLEDGE BASE (DO NOT MODIFY):
+                    # {chr(10).join(prolog_facts)}
         # prompt engineering
         input_text = f"""
-                    ROLE: You are a Safety-Critical ML System Analyst specializing in chain-of-thought reasoning.
-                
-                    DOMAIN KNOWLEDGE CONTEXT:
-                    - ML Safety Systems involve data flow: Sensors → Algorithms → ML_Flow → Safety Requirements
-                    - Safety requirements constrain ML behavior and system functionality
-                    - System components must satisfy both functional and safety requirements
-                    - System description contains multiple sensors, functionailities, and algorithms
-                
-                    CRITICAL INSTRUCTIONS:
-                    1. PRESERVE EXACT FACT SYNTAX: Use the provided Prolog facts exactly as given - no modifications
-                    2. SAFETY-FIRST REASONING: Prioritize safety implications in your analysis
-                    3. DATA FLOW TRACING: Follow Input/Output/NEXT relationships to trace data paths
-                    4. REQUIREMENT SATISFACTION: Check if components satisfy relevant safety requirements
-                    5. DEPENDENCIES TRACING: Retrieve all elements excatly existed the knowledge base 
-                
-                    EXTRACTED KEYWORDS: {', '.join(keywords)}
-                
-                    KNOWLEDGE BASE (DO NOT MODIFY):
-                    {chr(10).join(prolog_facts)}
-                
-                    REASONING FRAMEWORK:
-                    1. Identify key entities mentioned in the question
-                    2. Map entities to safety requirements and constraints
-                    3. Trace dependencies within the system description
-                    4. Verify requirement satisfaction conditions
-                    5. Provide safety implications analysis
-                
-                    ANSWER FORMAT REQUIREMENTS:
-                    - Start with relevant Prolog facts (exact copies from knowledge base)
-                    - Add Prolog rules ONLY if necessary for inference
-                    - Include detailed safety-aware reasoning
-                    - Conclude with safety recommendations if applicable
-                
-                    EXAMPLE PATTERNS: 
-                    Question: "Which kind of algorithm has been used in Autonomous braking system?"
-                    Final Answer:
-                    pointnet__
-                    yolov5
+                  ROLE: You are an expert in automotive safety engineering and autonomous vehicle systems. 
+                  Your task is to analyze the safety requirements of an automated driving system (ADS) using the provided structured knowledge base.
+
+            CONTEXT:
+            The knowledge base is provided in structured data format as follows:
+            {', '.join(prolog_facts)}
+            
+            INSTRUCTIONS:
+            1. Identify and summarize the key safety requirements relevant to the input question.
+            2. Analyze the knowledge base to extract all evidence and relations that support or describe these safety requirements.
+            3. Evaluate whether the described system satisfies each requirement, citing explicit elements or facts from the knowledge base.
+            4. DEPENDENCY TRACING: For every safety requirement, list all directly referenced elements or entities that appear *exactly* in the knowledge base (no fabricated or inferred data).
+            5. Provide a clear final answer that only includes the Dependency-traced elements within the knowledge base.
+            6. Based on the retrieved  Dependency-traced elements, generate the rules following the prolog grammar by using the name of elements (do not rewrite the names).
+            OUTPUT FORMAT:
+            - **Dependency Trace (Exact Elements)**       
+            - ** The Prolog-based Rules **        
                     
-                    Reasoning: The question is about which algorithm is used in the Autonomous braking system. The knowledge base states that consist(system_description, brakes) and consist(system_description, paeb) which means that the braking system is part of the system description, which also consists of pre-autonomous emergency braking (paeb). include(pointnet__, paeb) indicates that pointnet__ is used by paeb. include(yolov5, paeb) indicates that yolov5 is also used by paeb. Thus, the algorithms pointnet__ and yolov5 are involved in the autonomous braking system (PAEB).
-                    
-                    
-                    Question: "What sensors provide data to the anomaly detection flow?"
-                    Final Answer:
-                    vibration_sensor
-                    
-                
-                    Reasoning: vibration_sensor is a Sensors node connected via Collect_Data relationship to anomaly_detection ML_Flow, indicating it provides input data for anomaly detection processing.
-                
-                    Question: "Which safety requirements apply to the prediction algorithm?"
-                    Final Answer:
-                    accuracy_threshold
-                    prediction_engine
-                
-                    Reasoning: accuracy_threshold is an ML_Safety_Requirement connected via Input relationship to prediction_engine algorithm, constraining its operational parameters for safety compliance.
-                
                     USER QUESTION: {user_question}
                 
                     Final ANSWER:
                     """
 
-        print("\n[OPTIMIZED LLM PROMPT]\n" + input_text)
+        # print("\n[OPTIMIZED LLM PROMPT]\n" + input_text)
+        # print (keywords)
         return self.generate_with_llm(input_text)
     def generate_with_llm(self, input_text):
         """Generate response using Gemini LLM with output cleaning."""

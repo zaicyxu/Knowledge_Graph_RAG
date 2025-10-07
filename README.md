@@ -16,3 +16,80 @@
 
 ​	e.g., mono_camera and Mono Camera.
 
+2. What's the queries for Prolog ???
+
+#### Issues from Current Framework
+
+1. Whats' the relationships between Neo4j and Prolog?
+
+a) Prolog generates the inferred graphs, which contain the facts existed in the Logic knowledgebase.
+
+2. What's the input of the framework?
+
+a) Test cases and other system-related questions
+
+3. What's the main workflow of the framework?
+
+a) **Constructing the graph-based knowledgebase**
+
+b) **Constructing the logic-based knowledgebase**
+
+​	b.1) Input: Requirement with Nature Language Representations
+
+​	b.2) LLM-based Interpreter used to translate the reuqirements to logic representations (RAG).
+
+​	b.3) LLM-based aligner used to support the multiple step reasoning via Prolog.
+
+​	b.4) The purpose of logic-based knowledgebase is to map the requirements with the design-time information.
+
+​	**Key Issues**:
+
+​	
+
+ c) **Traceability analysis regarding the design information.**
+
+​	The design information includes: 1) Test cases 2) Data argument statement....
+
+​	c.1) Input: Test cases and other systems-related questions
+
+​	c.2) LLM-based Interprete
+
+​	c.3) Prolog-based logic solver.
+
+
+
+​	**Some examples of test cases:**
+
+​		**TC-P01 / Cut-in detection (highway)**
+
+- **Env:** Proving ground, dry daylight.
+- **Stimuli:** Lead car 100 km/h; adjacent car cuts in with Δv=-10 km/h, gap 15 m.
+- **Expected:** ADS re-tracks new lead in ≤300 ms; no false emergency brake.
+- **Metrics:** Track switch latency ≤300 ms; lateral jerk ≤3 m/s²; min TTC ≥2.0 s.
+
+​	
+
+​	**TC-P02 / Motorcycle in blind spot**
+
+- **Env**: Sim + track.
+
+- **Stimuli:** Motorcycle approaches from rear quarter at 120 km/h.
+
+- **Expected:** Correct classification in blind-spot; inhibit lane change.
+
+- **Metrics:** Detection range ≥50 m; false lane-change probability = 0.
+
+  
+
+​	**TC-P03 / Occluded pedestrian at mid-block**
+
+- **Env:** Urban mock street; parked van occludes 80% of body.
+- **Stimuli:** Pedestrian emerges walking 1.2 m/s.
+- **Expected:** Early hazard hypothesis; speed reduction before full visibility.
+- **Metrics:** Speed ≤15 km/h before full reveal; no collision; min clearance ≥1.5 m.
+- 
+
+ d) **Whats the purpose of Prolog?**
+
+
+

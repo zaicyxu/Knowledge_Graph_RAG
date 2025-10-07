@@ -9,7 +9,7 @@
 @Time: Sep/2025
 @Author: Rui Xu
 @Contact: rxu@kth.se
-@Version: 0.2.6
+@Version: 0.2.4
 @Description: Based on the original RAG system, the output format was modified to conform to the
               Prolog fact and rules format standards for subsequent processing.
 """
@@ -228,37 +228,37 @@ class Neo4jRAGSystem:
 
         system_prompt = """
                         You are an AI assistant specialized in Machine Learning Safety knowledge graph queries.
-
+                    
                         DOMAIN CONTEXT:
                         - This is an ML Safety knowledge graph focusing on safety-critical systems
                         - Core components: Sensors, algorithms, ML_Flow, Safety_Requirements
                         - Data flow: Sensors → Collect_Data → algorithms → ML_Flow → Safety_Requirements
-
+                    
                         ENTITY HIERARCHY:
                         1. System Level: System_Description, System_Safety_Requirement
                         2. ML Pipeline: ML_Flow, algorithms, Sensors, actuators
                         3. Safety Requirements: ML_Safety_Requirement, functional, functionalility
                         4. Components: Sensors, actuators, algorithms
-
+                    
                         RELATIONSHIP SEMANTICS:
                         - NEXT: Sequential flow between ML_Flow components
                         - Input/Output: Data flow direction
                         - Consist/Include: Composition relationships
                         - Serve: Functional serving relationships
                         - Collect_Data: Sensor data collection
-
+                    
                         QUERY PATTERN EXAMPLES:
                         - "Which sensors feed data to anomaly detection flow?" → Sensors + Collect_Data + ML_Flow
                         - "What safety requirements apply to the prediction algorithm?" → ML_Safety_Requirement + algorithms
                         - "Show the ML flow sequence for system X" → ML_Flow + NEXT relationships
-
+                    
                         Extract query intent in JSON format:
                         {
                             "entities": ["primary_entity", "secondary_entity"],
                             "relationships": ["key_relationship", "supporting_relationship"],
                             "filters": {"property": "value", "name_contains": "keyword"}
                         }
-
+                    
                         Focus on safety and data flow aspects of the query.
                         """
 
@@ -347,14 +347,10 @@ class Neo4jRAGSystem:
                     keyword_entities = []
 
         if keyword_entities:
-            # mark source for debug and normalize schema
-            for e in keyword_entities:
-                e['source'] = 'keyword'
-            keyword_entities = [self.normalize_entity(e) for e in keyword_entities]
             print(f"[INFO] Keyword-based match found: {len(keyword_entities)} entities.")
             return keyword_entities
 
-        # Similarity fallback
+        # --- Similarity fallback ---
         print("[INFO] No keyword-based match found. Falling back to similarity-based retrieval...")
 
         query_embedding = self.get_embedding(query_text)
@@ -422,9 +418,6 @@ class Neo4jRAGSystem:
                     continue
 
         if similarity_entities:
-            for e in similarity_entities:
-                e['source'] = 'similarity'
-            similarity_entities = [self.normalize_entity(e) for e in similarity_entities]
             print(f"[INFO] Similarity fallback found {len(similarity_entities)} results.")
             return similarity_entities
 
@@ -462,18 +455,6 @@ class Neo4jRAGSystem:
         # fallback: return quoted atom, escape single quotes inside
         escaped = raw.replace("'", "\\'")
         return f"'{escaped}'"
-
-    def _safe_raw(self, text):
-        """
-        Keep raw text from DB, but wrap in quotes if it contains spaces or special characters,
-        so that Prolog can still parse it correctly.
-        """
-        if text is None:
-            return "unknown"
-        text = str(text)
-        if re.match(r'^[a-zA-Z0-9_]+$', text):
-            return text
-        return f"'{text}'"
 
     def _label_to_prolog_predicate(self, label):
         """
@@ -520,9 +501,8 @@ class Neo4jRAGSystem:
                     else:
                         raw_e1_label = t
                 e1_type = self._label_to_prolog_predicate(raw_e1_label)
-                e1_name = self._safe_raw(raw_n1_name)
-                prolog_facts.append(f"{e1_type}({e1_name}).")
-
+                # prolog_facts.append(f"{e1_type}({e1_name}).")
+                prolog_facts.append(f"{e1_type}({raw_n1_name}).")
                 # Process connected nodes and relationships
                 connected = entity.get('connected_nodes') or []
                 relations = entity.get('relations') or []
@@ -540,8 +520,8 @@ class Neo4jRAGSystem:
                         else:
                             raw_e2_label = t2
                     e2_type = self._label_to_prolog_predicate(raw_e2_label)
-                    e2_name = self._safe_raw(raw_n2_name)
-                    prolog_facts.append(f"{e2_type}({e2_name}).")
+                    # prolog_facts.append(f"{e2_type}({e2_name}).")
+                    prolog_facts.append(f"{e2_type}({raw_n2_name}).")
 
                     if idx < len(relations):
                         relation_raw = relations[idx]
@@ -553,78 +533,72 @@ class Neo4jRAGSystem:
                 continue
 
         prolog_facts = sorted(set(prolog_facts))
-        facts_str = "\n".join(prolog_facts) if prolog_facts else "% No facts available"
 
         # prompt engineering
         input_text = f"""
-                    ROLE: You are a Machine Learning Safety Analyst working with a knowledge graph represented as Prolog facts.
-            
-                    OBJECTIVE:
-                    Answer the user's question using ONLY the provided Prolog facts.
-                    Each fact represents a relationship between entities (e.g., collect_data(sensor, flow)).
-                    You must reason step-by-step to find relevant entities and their safety implications.
-            
-                    IMPORTANT RULES:
-                    - Do NOT invent facts that are not in the list.
-                    - Base your reasoning strictly on the logic implied by the Prolog predicates.
-                    - Use clear, structured sections for the answer.
-                    - Always provide human-readable names for entities (from the fact arguments).
-                    - Focus on safety-related meaning, risks, and system dependencies.
-            
-                    USER QUESTION:
-                    {user_question}
-            
-                    KEYWORDS (from semantic analysis):
-                    {keywords}
-            
-                    PROLOG FACTS (retrieved from the knowledge graph):
-                    {facts_str}
-            
-                    REASONING TEMPLATE:
-                    1. Identify relevant entities and relationships that answer the question.
-                    2. Trace connections across data flow: Sensors → Algorithms → ML_Flow → Safety_Requirements.
-                    3. Derive functional dependencies and constraints.
-                    4. Explain how these relations imply safety requirements or risks.
-                    5. Conclude with a short recommendation.
-            
-                    OUTPUT FORMAT:
-                    Results:
-                    - [list of relevant entities]
-            
-                    Reasoning:
-                    - [logical explanation based on Prolog facts]
-            
-                    Safety Implications:
-                    - [explanation of risks or compliance points]
-            
-                    Recommendations:
-                    - [optional safety improvements or checks]
-            
-                    EXAMPLE:
-                    Question: Which sensors provide data to the anomaly detection flow?
-                    Facts:
-                    collect_data(vibration_sensor, anomaly_detection).
-            
-                    Results:
-                    - vibration_sensor
-            
-                    Reasoning:
-                    - The fact shows that vibration_sensor is directly connected to anomaly_detection via collect_data.
-                      Therefore, the vibration_sensor provides data to the anomaly detection flow.
-            
-                    Safety Implications:
-                    - The accuracy of anomaly detection depends on reliable vibration_sensor data.
-            
-                    Recommendations:
-                    - Implement sensor health monitoring to ensure anomaly detection reliability.
-            
-                    NOW, answer the following question strictly based on the provided facts.
+                    ROLE: You are a Safety-Critical ML System Analyst specializing in chain-of-thought reasoning.
+                
+                    DOMAIN KNOWLEDGE CONTEXT:
+                    - ML Safety Systems involve data flow: Sensors → Algorithms → ML_Flow → Safety Requirements
+                    - Safety requirements constrain ML behavior and system functionality
+                    - System components must satisfy both functional and safety requirements
+                    - System description contains multiple sensors, functionailities, and algorithms
+                
+                    CRITICAL INSTRUCTIONS:
+                    1. PRESERVE EXACT FACT SYNTAX: Use the provided Prolog facts exactly as given - no modifications
+                    2. SAFETY-FIRST REASONING: Prioritize safety implications in your analysis
+                    3. DATA FLOW TRACING: Follow Input/Output/NEXT relationships to trace data paths
+                    4. REQUIREMENT SATISFACTION: Check if components satisfy relevant safety requirements
+                    5. DEPENDENCIES TRACING: Retrieve all elements excatly existed the knowledge base 
+                
+                    EXTRACTED KEYWORDS: {', '.join(keywords)}
+                
+                    KNOWLEDGE BASE (DO NOT MODIFY):
+                    {chr(10).join(prolog_facts)}
+                
+                    REASONING FRAMEWORK:
+                    1. Identify key entities mentioned in the question
+                    2. Map entities to safety requirements and constraints
+                    3. Trace dependencies within the system description
+                    4. Verify requirement satisfaction conditions
+                    5. Provide safety implications analysis
+                
+                    ANSWER FORMAT REQUIREMENTS:
+                    - Start with relevant Prolog facts (exact copies from knowledge base)
+                    - Add Prolog rules ONLY if necessary for inference
+                    - Include detailed safety-aware reasoning
+                    - Conclude with safety recommendations if applicable
+                
+                    EXAMPLE PATTERNS: 
+                    Question: "Which kind of algorithm has been used in Autonomous braking system?"
                     Final Answer:
+                    pointnet__
+                    yolov5
+                    
+                    Reasoning: The question is about which algorithm is used in the Autonomous braking system. The knowledge base states that consist(system_description, brakes) and consist(system_description, paeb) which means that the braking system is part of the system description, which also consists of pre-autonomous emergency braking (paeb). include(pointnet__, paeb) indicates that pointnet__ is used by paeb. include(yolov5, paeb) indicates that yolov5 is also used by paeb. Thus, the algorithms pointnet__ and yolov5 are involved in the autonomous braking system (PAEB).
+                    
+                    
+                    Question: "What sensors provide data to the anomaly detection flow?"
+                    Final Answer:
+                    vibration_sensor
+                    
+                
+                    Reasoning: vibration_sensor is a Sensors node connected via Collect_Data relationship to anomaly_detection ML_Flow, indicating it provides input data for anomaly detection processing.
+                
+                    Question: "Which safety requirements apply to the prediction algorithm?"
+                    Final Answer:
+                    accuracy_threshold
+                    prediction_engine
+                
+                    Reasoning: accuracy_threshold is an ML_Safety_Requirement connected via Input relationship to prediction_engine algorithm, constraining its operational parameters for safety compliance.
+                
+                    USER QUESTION: {user_question}
+                
+                    Final ANSWER:
                     """
 
         print("\n[OPTIMIZED LLM PROMPT]\n" + input_text)
         return self.generate_with_llm(input_text)
-
     def generate_with_llm(self, input_text):
         """Generate response using Gemini LLM with output cleaning."""
         try:
@@ -633,94 +607,10 @@ class Neo4jRAGSystem:
         except Exception as e:
             return "Sorry, I couldn't generate an answer due to an error."
 
-    def normalize_entity(self, raw_entity):
-        """
-        Normalize a raw retrieval record into a stable schema:
-        {
-            "node1": {"id": ..., "name": "...", "type": [...]},
-            "relations": [...],
-            "connected_nodes": [{"id": ..., "name": "...", "type": [...]}, ...],
-            "source": "keyword" | "similarity" | None
-        }
-        Ensures types are consistent (type as list, relations as list).
-        """
-        if not raw_entity:
-            return {"node1": {"id": None, "name": "", "type": []},
-                    "relations": [], "connected_nodes": [], "source": None}
-
-        node1 = raw_entity.get("node1") or {}
-        nid = node1.get("id")
-        nname = node1.get("name") or ""
-        ntype = node1.get("type") or []
-        # ensure type is list
-        if isinstance(ntype, (str,)):
-            ntype = [ntype]
-        elif not isinstance(ntype, (list, tuple)):
-            ntype = list(ntype) if ntype is not None else []
-        else:
-            ntype = list(ntype)
-
-        # connected nodes normalization
-        raw_conns = raw_entity.get("connected_nodes") or []
-        conns = []
-        for cn in raw_conns:
-            if not cn:
-                continue
-            cid = cn.get("id")
-            cname = cn.get("name") or ""
-            ctype = cn.get("type") or []
-            if isinstance(ctype, (str,)):
-                ctype = [ctype]
-            elif not isinstance(ctype, (list, tuple)):
-                ctype = list(ctype) if ctype is not None else []
-            else:
-                ctype = list(ctype)
-            conns.append({"id": cid, "name": cname, "type": ctype})
-
-        relations = raw_entity.get("relations") or []
-        if isinstance(relations, (str,)):
-            relations = [relations]
-        elif not isinstance(relations, (list, tuple)):
-            try:
-                relations = list(relations)
-            except Exception:
-                relations = []
-
-        return {
-            "node1": {"id": nid, "name": nname, "type": ntype},
-            "relations": list(relations),
-            "connected_nodes": conns,
-            "source": raw_entity.get("source")
-        }
-
     def clean_response(self, text):
-        """Clean and structure LLM output into consistent labeled sections."""
-        if not text:
-            return ""
-
-        # Basic cleanup
-        text = text.replace('\r\n', '\n').replace('\r', '\n')
-        text = re.sub(r'```+', '', text)
-        text = re.sub(r'`([^`]*)`', r'\1', text)
-        text = re.sub(r'^\s{0,3}#{1,6}\s*', '', text, flags=re.MULTILINE)
-        text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
-        text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
-        text = re.sub(r'\n\s*\n+', '\n\n', text)
-
-        # Normalize bullets
-        text = re.sub(r'^\s*[\-\+\*]\s+', '- ', text, flags=re.MULTILINE)
-        text = re.sub(r'^\s*\d+\.\s+', '- ', text, flags=re.MULTILINE)
-
-        # Enforce 4-section format if missing headers
-        headers = ["Results", "Reasoning", "Safety Implications", "Recommendations"]
-        output = []
-        for h in headers:
-            pattern = rf"(?i)^{h}\s*:\s*(.*?)(?=\n[A-Z][a-z]+:|\Z)"
-            match = re.search(pattern, text, flags=re.S)
-            section = match.group(1).strip() if match else "N/A"
-            output.append(f"{h}:\n{section.strip()}\n")
-
-        return "\n\n".join(output).strip()
+        """Remove Markdown formatting and redundant symbols."""
+        text = text.replace("*", "").replace("###", "").strip()
+        return "\n".join([line.strip() for line in text.split("\n") if line.strip()])
 
     def rag_pipeline(self, user_question):
         """Execute the RAG pipeline with embedding-based retrieval and in-context learning."""

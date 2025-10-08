@@ -9,7 +9,7 @@
 @Time: Sep/2025
 @Author: Rui Xu
 @Contact: rxu@kth.se
-@Version: 0.2.5
+@Version: 0.2.6
 @Description: Based on the original RAG system, the output format was modified to conform to the
               Prolog fact and rules format standards for subsequent processing.
 """
@@ -228,37 +228,37 @@ class Neo4jRAGSystem:
 
         system_prompt = """
                         You are an AI assistant specialized in Machine Learning Safety knowledge graph queries.
-                    
+
                         DOMAIN CONTEXT:
                         - This is an ML Safety knowledge graph focusing on safety-critical systems
                         - Core components: Sensors, algorithms, ML_Flow, Safety_Requirements
                         - Data flow: Sensors → Collect_Data → algorithms → ML_Flow → Safety_Requirements
-                    
+
                         ENTITY HIERARCHY:
                         1. System Level: System_Description, System_Safety_Requirement
                         2. ML Pipeline: ML_Flow, algorithms, Sensors, actuators
                         3. Safety Requirements: ML_Safety_Requirement, functional, functionalility
                         4. Components: Sensors, actuators, algorithms
-                    
+
                         RELATIONSHIP SEMANTICS:
                         - NEXT: Sequential flow between ML_Flow components
                         - Input/Output: Data flow direction
                         - Consist/Include: Composition relationships
                         - Serve: Functional serving relationships
                         - Collect_Data: Sensor data collection
-                    
+
                         QUERY PATTERN EXAMPLES:
                         - "Which sensors feed data to anomaly detection flow?" → Sensors + Collect_Data + ML_Flow
                         - "What safety requirements apply to the prediction algorithm?" → ML_Safety_Requirement + algorithms
                         - "Show the ML flow sequence for system X" → ML_Flow + NEXT relationships
-                    
+
                         Extract query intent in JSON format:
                         {
                             "entities": ["primary_entity", "secondary_entity"],
                             "relationships": ["key_relationship", "supporting_relationship"],
                             "filters": {"property": "value", "name_contains": "keyword"}
                         }
-                    
+
                         Focus on safety and data flow aspects of the query.
                         """
 
@@ -475,7 +475,6 @@ class Neo4jRAGSystem:
             return text
         return f"'{text}'"
 
-
     def _label_to_prolog_predicate(self, label):
         """
         Convert a graph label or relation name into a safe Prolog predicate name.
@@ -563,59 +562,68 @@ class Neo4jRAGSystem:
         # KNOWLEDGE BASE (DO NOT MODIFY):
         # {chr(10).join(prolog_facts)}
         input_text = f"""
-                    ROLE:
-                    You are an expert in automotive safety engineering and autonomous driving systems.
-                    Your task is to analyze the safety requirements of an Automated Driving System (ADS)
-                    using the provided structured knowledge base written in Prolog-like format.
-            
-                    KNOWLEDGE BASE (DO NOT MODIFY):
-                    {', '.join(prolog_facts)}
-            
-                    USER QUESTION:
-                    {user_question}
-            
-                    INSTRUCTIONS:
-                    1. Identify and summarize the key safety requirements relevant to the question.
-                    2. Analyze the knowledge base to find all directly referenced entities and facts that describe or support these requirements.
-                    3. Evaluate whether the described system satisfies each requirement, citing exact elements from the knowledge base.
-                    4. Perform DEPENDENCY TRACING:
-                       - List all directly referenced single elements (e.g., algorithm(ObjectTracking), sensor(Lidar)).
-                       - Exclude compound relations (e.g., consist(ObjectTracking, ACC)).
-                    5. Provide a final structured answer that includes:
-                       - Dependency Trace (list of exact elements)
-                       - Prolog-Based Rules (define the relationships)
-                    6. Generate Prolog rules that link each requirement (e.g., ReqA) to its elements.
-                       - Example schema:
-                            requirement(ReqA).
-                            requirement_model(ReqA, ModelName).
-                            requirement_algorithm(ReqA, AlgorithmName).
-                            requirement_sensor(ReqA, SensorName).
-                       - Example rule form:
-                            req_related_sensor(ReqA, S) :- requirement(ReqA), requirement_sensor(ReqA, S).
-                    7. Use only entity names and relationships that appear exactly in the knowledge base.
-            
-                    ENTITY NAME INTEGRITY RULES (CRITICAL):
-                    - You MUST preserve the exact spelling, capitalization, and spacing of all entity names as they appear in the knowledge base.
-                    - Never modify, translate, or rename any entity.
-                    - Treat all entity names as literal tokens (like variable names in code).
-                    - When generating Prolog facts or rules, copy names exactly as shown.
-            
-                    IMPORTANT CONSTRAINTS:
-                    - Do not invent or infer missing data.
-                    - If no matching elements are found, explicitly write: "No matching element found."
-                    - Use clear and minimal natural language.
-            
-                    OUTPUT FORMAT (follow exactly):
-                    1. **Dependency Trace**
-                       - [list of elements exactly as they appear in the knowledge base]
-                    2. **Prolog-Based Rules**
-                       - [rules connecting requirements and elements]
-            
-                    Final Answer:
-                    """
+        ROLE:
+        You are an expert in automotive safety engineering and autonomous driving systems.
+        Your task is to analyze the safety requirements of an Automated Driving System (ADS)
+        using the provided structured knowledge base written in Prolog-like format.
+
+        KNOWLEDGE BASE (DO NOT MODIFY):
+        {', '.join(prolog_facts)}
+
+        USER QUESTION:
+        {user_question}
+
+        INSTRUCTIONS:
+        1. Identify and summarize the key safety requirements relevant to the question.
+        2. Analyze the knowledge base to find all directly referenced single-element entities and facts that describe or support these requirements.
+        3. Evaluate whether the described system satisfies each requirement, citing exact elements from the knowledge base.
+        4. Perform DEPENDENCY TRACING:
+           - List all directly referenced single-argument facts (e.g., algorithm(ObjectTracking)., sensor(Lidar).).
+           - Exclude compound relations (e.g., consist(ObjectTracking, ACC). or serve(Mono Camera, Object Tracking).).
+           - Each fact must appear exactly as written in the knowledge base, preserving capitalization, spacing, and formatting.
+        5. Provide a final structured answer with two strictly separated sections:
+           (1) Dependency Trace: all matched single-argument entities.
+           (2) Prolog-Based Rules: relations connecting these entities to requirements.
+        6. Generate Prolog rules that define relationships between each requirement (ReqA) and its matched entities.
+           - Example schema:
+                requirement_algorithm(ReqA, AlgorithmName).
+                requirement_sensor(ReqA, SensorName).
+                requirement_model(ReqA, ModelName).
+                requirement_component(ReqA, ComponentName).
+                requirement_system_description(ReqA, SystemDescriptionName).
+           - Example rule definitions:
+                reqrelatedalgorithm(ReqA, Algo) :- requirement(ReqA), requirement_algorithm(ReqA, Algo).
+                reqrelatedsensor(ReqA, S) :- requirement(ReqA), requirement_sensor(ReqA, S).
+                reqrelatedmodel(ReqA, M) :- requirement(ReqA), requirement_model(ReqA, M).
+                reqrelatedcomponent(ReqA, C) :- requirement(ReqA), requirement_component(ReqA, C).
+                reqrelatedsystemdescription(ReqA, SD) :- requirement(ReqA), requirement_system_description(ReqA, SD).
+
+        ENTITY NAME INTEGRITY RULES (CRITICAL):
+        - You MUST preserve exact spelling, capitalization, and spacing of all entity names as they appear in the knowledge base.
+        - Never modify, quote, or translate any entity name.
+        - Treat entity names as literal identifiers.
+        - Any quotation marks or punctuation around entity names will be removed automatically after generation, so output them as-is.
+
+        IMPORTANT CONSTRAINTS:
+        - Do not invent or infer missing entities.
+        - If no matching elements are found, explicitly write: "No matching element found."
+        - Use only minimal and clear text — do not output natural-language reasoning.
+        - The final answer must be fully structured, containing only the two required sections.
+
+        OUTPUT FORMAT (STRICT):
+        Dependency Trace
+        [list of single-argument entities, one per line, ending with '.']
+
+        Prolog-Based Rules
+        [requirement_* and reqrelated* facts, one per line, ending with '.']
+
+        Final Answer:
+        """
+
 
         print("\n[OPTIMIZED LLM PROMPT]\n" + input_text)
         return self.generate_with_llm(input_text)
+
     def generate_with_llm(self, input_text):
         """Generate response using Gemini LLM with output cleaning."""
         try:
@@ -684,11 +692,11 @@ class Neo4jRAGSystem:
             "source": raw_entity.get("source")
         }
 
-
     def clean_response(self, text):
         """
-        Robustly clean LLM output from Markdown artifacts and normalize wrapping/line breaks.
-        Keeps content but strips common Markdown syntax that causes inconsistent wrapping.
+        Robustly clean LLM output for structured Prolog-like results.
+        Removes Markdown artifacts, stray punctuation, and normalizes spacing.
+        Ensures consistency with database entity naming.
         """
         if not text:
             return ""
@@ -696,27 +704,29 @@ class Neo4jRAGSystem:
         # Normalize newlines
         text = text.replace('\r\n', '\n').replace('\r', '\n')
 
-        # Remove fenced code block markers ``` but keep their inner text (if any)
+        # Remove Markdown code blocks and inline ticks
         text = re.sub(r'```+', '', text)
-
-        # Remove inline code ticks but keep content inside
         text = re.sub(r'`([^`]*)`', r'\1', text)
 
-        # Remove headings (#, ##, etc.) but keep text
+        # Remove Markdown headings and emphasis markers
         text = re.sub(r'^\s{0,3}#{1,6}\s*', '', text, flags=re.MULTILINE)
-
-        # Remove bold/italic markers but keep content
         text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
         text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
 
-        # Normalize list markers: -, *, +, or "1. " -> "- "
-        text = re.sub(r'^\s*[\*\-\+]\s+', '- ', text, flags=re.MULTILINE)
-        text = re.sub(r'^\s*\d+\.\s+', '- ', text, flags=re.MULTILINE)
+        # Standardize list markers
+        text = re.sub(r'^\s*[\*\-\+]\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)
 
-        # Convert multiple blank lines into a single blank line
+        # Remove stray punctuation around parentheses (e.g., algorithm('Object Detection').)
+        text = re.sub(r"'\s*([A-Za-z0-9_\- ]+)\s*'", r'\1', text)
+
+        # Remove duplicate periods (e.g., "algorithm(Object Detection)..")
+        text = re.sub(r'\.\.+', '.', text)
+
+        # Collapse multiple blank lines
         text = re.sub(r'\n\s*\n+', '\n\n', text)
 
-        # Trim trailing spaces on each line and strip overall
+        # Trim trailing spaces
         lines = [ln.rstrip() for ln in text.split('\n')]
         text = '\n'.join(lines).strip()
 

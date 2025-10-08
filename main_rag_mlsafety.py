@@ -547,42 +547,59 @@ class Neo4jRAGSystem:
                     # {chr(10).join(prolog_facts)}
         # prompt engineering
         input_text = f"""
-                  ROLE: You are an expert in automotive safety engineering and autonomous vehicle systems. 
-                  Your task is to analyze the safety requirements of an automated driving system (ADS) using the provided structured knowledge base.
-
-            CONTEXT:
-            The knowledge base is provided in structured data format as follows:
-            {', '.join(prolog_facts)}
-            
-            INSTRUCTIONS:
-            1. Identify and summarize the key safety requirements relevant to the input question.
-            2. Analyze the knowledge base to extract all evidence and relations that support or describe these safety requirements.
-            3. Evaluate whether the described system satisfies each requirement, citing explicit elements or facts from the knowledge base.
-            4. DEPENDENCY TRACING: For every  requirement, list all directly referenced elements or entities that appear *exactly* in the knowledge base (no fabricated or inferred data) by their types.\
-                For example, the traced elements include algorithm(Object Tracking),consist(Object Tracking, Adaptive Cruise Control)
-                List all directly referenced single elements or entities (e.g., algorithm(Object Tracking)) that appear exactly in the knowledge base.
-                exclude compound facts or relations (e.g., consist(Object Tracking, Adaptive Cruise Control),collect_data(Object Tracking, Mono Camera)), because they contain multiple elements.
-            5. Provide a clear final answer that only includes the Dependency-traced elements within the knowledge base.
-            6. Based on the retrieved  Dependency-traced elements, generate the rules between the input requirements and the traced elements following the prolog grammar by using the name of elements.\
-                Do not change the name when generating the prolog code. For example Lidar should be 'Lidar'.
-            7. For example, given a requirement  from the input prompts, we firstly give a nickname such as Req-A and then make it as fact Req(Req-A)
-            then the schemas of the ruls should look like as follows: 
-                requirement_model( Req-A Model Name).
-                requirement_algorithm( Req-A Algorithm Name).
-                rrequirement_sensor( Req-A, Sensor Name).
-                
-            To this end, the rulese should desribe the above relationships as follows:
-                req_related_sensor(Req, S) :- requirement(Req), requirement_sensor(Req, S).
-
-            OUTPUT FORMAT:
-            - **Dependency Trace of listing all directly referenced single elements or entities (Exact Elements by their types)**       
-            
-            - ** The Prolog-based Rules **        
-                    
-                    USER QUESTION: {user_question}
-                
-                    Final ANSWER:
-                    """
+        ROLE:
+        You are an expert in automotive safety engineering and autonomous vehicle systems.
+        Your task is to analyze the safety requirements of an Automated Driving System (ADS)
+        using the provided structured knowledge base.
+        
+        CONTEXT:
+        The knowledge base is provided in Prolog-style structured data format as follows:
+        {', '.join(prolog_facts)}
+        
+        INSTRUCTIONS:
+        1. Identify and summarize the key safety requirements relevant to the input question.
+        
+        2. Analyze the knowledge base to extract all evidence and relations that directly
+           support or describe these safety requirements.
+        
+        3. Evaluate whether the described system satisfies each requirement, citing explicit
+           elements or facts that appear **exactly** in the knowledge base.
+        
+        4. DEPENDENCY TRACING:
+           - For each requirement, list all directly referenced single elements or entities 
+             that appear *exactly* in the knowledge base (no fabricated or inferred data).
+           - Include only atomic elements such as `algorithm(ObjectTracking)` or `sensor(Lidar)`.
+           - Exclude compound or relational facts such as 
+             `consist(ObjectTracking, AdaptiveCruiseControl)` or 
+             `collect_data(ObjectTracking, MonoCamera)` because they contain multiple elements.
+        
+        5. Provide a clear final list that includes only the dependency-traced elements found
+           **exactly** in the knowledge base.
+        
+        6. Based on these retrieved dependency-traced elements, generate **Prolog-based rules**
+           that link each input requirement to its corresponding elements.
+           - Do not change or rename any element (e.g., keep 'Lidar' exactly as 'Lidar').
+           - Each input question **exactly**  corresponds to one requirement; assign it a nickname 
+             (e.g., Req-A) and declare it as a fact: `requirement(Req-A).`
+           - Use schemas such as:
+               requirement_model(Req-A, ModelName).
+               requirement_algorithm(Req-A, AlgorithmName).
+               requirement_sensor(Req-A, SensorName).
+        
+        7. Define relationship rules describing these dependencies, for example:
+               req_related_sensor(Req, S) :- requirement(Req), requirement_sensor(Req, S).
+        
+        8. FINAL OUTPUT RESTRICTION:
+           The final response must contain only the following two sections:
+               
+           **Dependency Trace Elements:**
+           <list of exact dependency-traced elements>
+        
+           **Prolog-Based Rules:**
+           <generated Prolog rules>
+           No explanations, summaries, or text outside these two sections are allowed.
+           
+        """
 
         # print("\n[OPTIMIZED LLM PROMPT]\n" + input_text)
         # print (keywords)
@@ -620,7 +637,15 @@ def main():
         print("\nFinal Answer:", answer)
     finally:
         rag_system.close()
+        
+    ####  Test ####   
+    return answer
+    ###############
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    
+    ### Test ####
+    answer = main()
+    #############

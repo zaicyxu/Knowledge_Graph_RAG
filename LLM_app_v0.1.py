@@ -27,6 +27,7 @@ import hashlib  # <-- NEW: for stable widget keys
 import streamlit as st
 from main_rag_mlsafety import Neo4jRAGSystem
 import configuration
+from collections import defaultdict
 
 
 def init_rag_system() -> Neo4jRAGSystem:
@@ -44,55 +45,78 @@ def clear_chat_history() -> None:
     """Clear conversation history from session_state."""
     st.session_state.history = []
 
+# Lines that are just code fences (``` or ''') — we'll ignore/remove them
+_FENCE_LINE = re.compile(r"(?im)^\s*(?:`{3,}|'{3,}).*$")
+
+def _strip_fence_lines(s: str) -> str:
+    """Remove code-fence lines and trim surrounding whitespace."""
+    if not s:
+        return s
+    lines = [ln for ln in s.splitlines() if not _FENCE_LINE.match(ln)]
+    return "\n".join(lines).strip()
 
 def parse_response(text: str) -> dict:
     """
     Parse backend text into sections:
-      - final
-      - reasoning
-      - safety_implication
-      - safety_recommendations
+      - final: raw block under "Dependency Trace Elements:"
+      - prolog_rules: raw block under "Prolog-Based Rules:" / "The Prolog-based Rules:"
+      - final_facts: non-empty lines from 'final'
     If labels are absent, put entire text into 'final'.
-    This function is robust to case and small label variations.
     """
+    out = {"final": "", "final_facts": [], "prolog_rules": ""}
+
     if not text:
-        return {"final": "", "reasoning": "", "safety_implication": "", "safety_recommendations": ""}
+        return out
 
-    patterns = {
-        "final": re.compile(r"(?i)\bfinal\s*answer\b\s*[:：]?", re.MULTILINE),
-        "reasoning": re.compile(r"(?i)\breasoning\b\s*[:：]?", re.MULTILINE),
-        "safety_implication": re.compile(r"(?i)safety\s+implication[s]?\s*[:：]?", re.MULTILINE),
-        "safety_recommendations": re.compile(r"(?i)safety\s+recommendation[s]?\s*[:：]?", re.MULTILINE),
-    }
+    # Normalize newlines
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
 
-    positions = {}
-    for key, pat in patterns.items():
-        m = pat.search(text)
-        if m:
-            positions[key] = m.start()
+    # 1) Dependency Trace Elements block (tolerate fences/blank lines before header and before the next header)
+    DEP_BLOCK_RE = re.compile(
+        r"""(?imxs)
+        ^\s*(?:`{3,}.*\n|\s*'{3,}.*\n|\s*)*          # optional fences/blank lines before header
+        Dependency\s*Trace\s*Elements\s*:\s*         # header
+        (?P<dep>.*?)                                 # capture block…
+        (?=                                          # …until next header (with optional fences) or end
+            ^\s*(?:`{3,}.*\n|\s*'{3,}.*\n|\s*)*
+            (?:The\s+)?Prolog[-\s]*based\s*Rules\s*:\s*
+            | \Z
+        )
+        """
+    )
 
-    if not positions:
-        return {"final": text.strip(), "reasoning": "", "safety_implication": "", "safety_recommendations": ""}
+    # 2) Prolog-Based Rules block (tolerate fences/blank lines before header; capture to end)
+    PROLOG_RULES_RE = re.compile(
+        r"""(?imxs)
+        ^\s*(?:`{3,}.*\n|\s*'{3,}.*\n|\s*)*          # optional fences/blank lines before header
+        (?:The\s+)?Prolog[-\s]*based\s*Rules\s*:\s*  # header variants
+        (?P<rules>.*)                                # capture to end
+        \Z
+        """
+    )
 
-    sorted_items = sorted(positions.items(), key=lambda kv: kv[1])
-    ordered = [(k, positions[k]) for k, _ in sorted_items]
+    m_dep   = DEP_BLOCK_RE.search(text)
+    m_rules = PROLOG_RULES_RE.search(text)
 
-    parsed = {k: "" for k in patterns.keys()}
-    for idx, (key, start) in enumerate(ordered):
-        end = len(text)
-        if idx + 1 < len(ordered):
-            end = ordered[idx + 1][1]
-        m = patterns[key].search(text, start)
-        content = text[m.end():end].strip() if m else text[start:end].strip()
-        parsed[key] = content
+    # Fallback: neither header found → keep whole text as 'final'
+    if not m_dep and not m_rules:
+        final_block = _strip_fence_lines(text.strip())
+        out["final"] = final_block
+        out["final_facts"] = [ln.strip() for ln in final_block.splitlines() if ln.strip()]
+        return out
 
-    return {
-        "final": parsed.get("final", ""),
-        "reasoning": parsed.get("reasoning", ""),
-        "safety_implication": parsed.get("safety_implication", ""),
-        "safety_recommendations": parsed.get("safety_recommendations", ""),
-    }
+    dep_block   = _strip_fence_lines(m_dep.group("dep"))     if m_dep   else ""
+    rules_block = _strip_fence_lines(m_rules.group("rules")) if m_rules else ""
 
+    # Fill outputs
+    out["final"] = dep_block or (text.strip() if not rules_block else "")
+    out["prolog_rules"] = rules_block
+
+    # Split dependency block into individual items (non-empty lines)
+    if dep_block:
+        out["final_facts"] = [ln.strip() for ln in dep_block.splitlines() if ln.strip()]
+
+    return out
 
 def _final_to_options(final_text: str) -> list[str]:
     """
@@ -156,10 +180,9 @@ def main() -> None:
 
                     st.session_state.history.append({
                         "question": question,
-                        "final": parsed["final"],
-                        "reasoning": parsed["reasoning"],
-                        "safety_implication": parsed["safety_implication"],
-                        "safety_recommendations": parsed["safety_recommendations"],
+                        "Related Elements": parsed["final"],
+                        "Prolog Rules": parsed["prolog_rules"],
+                        "Categoried Elements": parsed["final_facts"],
                         "raw": raw_answer
                     })
                 except Exception as e:
@@ -173,16 +196,17 @@ def main() -> None:
         # Render newest first, but keys are now stable so reruns won't break widgets
         for i, entry in enumerate(reversed(st.session_state.history), start=1):
             with st.container():
-                st.markdown(f"### Q{i}: {entry['question']}")
+                # st.markdown(f"### Q{i}: {entry['question']}")
 
                 # --- Final Answer as select box (with stable keys) ---
-                if entry["final"]:
+                if entry["Related Elements"]:
+                    
                     st.markdown("**Final Answer:**")
-                    options = _final_to_options(entry["final"])
+                    options = _final_to_options(entry["Related Elements"])
 
                     if options:
                         selected = st.selectbox(
-                            "Choose a final answer item",
+                            "Choose a related item extracted from Neo4j",
                             options=options,
                             index=0,
                             key=_stable_key("final_select", entry)
@@ -194,24 +218,31 @@ def main() -> None:
                         st.info("No discrete items found in the final section.")
                         st.code(entry["final"], language="text")
 
-                # Reasoning
-                if entry["reasoning"]:
-                    with st.expander("Reasoning"):
-                        st.markdown(entry["reasoning"])
 
+                if entry["Prolog Rules"]:
+                    st.subheader("Generated Prolog-based Rules")
+                    st.code(entry["Prolog Rules"], language="prolog")
+                    
+                if entry["Categoried Elements"]:
+                    categories = defaultdict(list)
+                    pattern = re.compile(r"(\w+)\(([^)]+)\)")
+                    items = entry["Categoried Elements"]
+                    for item in items:
+                        match = pattern.search(item)
+                        if match:
+                            category, name = match.groups()
+                            categories[category].append(name.strip())
+                    st.subheader("Categorized Elements from Neo4j")
+                    selected_category = st.selectbox("Select a category:", list(categories.keys()))
+
+                    # Show corresponding items
+                    st.write(f"### Items in category: {selected_category}")
+                    st.write(categories[selected_category])
                 # Safety Implication
-                if entry["safety_implication"]:
-                    with st.expander("Safety Implication"):
-                        st.markdown(entry["safety_implication"])
-
-                # Safety Recommendations
-                if entry["safety_recommendations"]:
-                    with st.expander("Safety Recommendations"):
-                        st.markdown(entry["safety_recommendations"])
 
                 # Raw backend output
-                with st.expander("Raw backend output"):
-                    st.text(entry["raw"])
+                # with st.expander("Raw backend output"):
+                    # st.text(entry["raw"])
 
                 st.markdown("---")
 

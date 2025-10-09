@@ -102,3 +102,7 @@ b) **Constructing the logic-based knowledgebase**
    2. The object detector shall reliably detect pedestrians of ≥ 0.4 m width at a distance of up to 40 m with a probability of ≥ 0.9.
    3. The segmentation network shall identify lane boundaries with a lateral error ≤ 0.2 m at 30 m range under nominal lighting.
    4. The ML perception module shall periodically self-validate using reference scenes or known calibration targets to ensure runtime performance consistency.
+   5. Measure time stamps on frame acquisition and on completed inference; compute median and 95th percentile over a representative trace (≥10,000 frames). Pass if med ≤ 30 ms and p95 ≤ 60 ms.
+   6. The object detector shall detect pedestrians of physical width ≥ 0.40 m at distances up to 40 m with true positive probability P ≥ 0.90 under nominal daytime lighting and unobstructed view (IoU threshold = 0.5).
+   7. The segmentation / lane detection network shall localize lane boundaries with lateral error ≤ 0.20 m at 30 m range under nominal lighting; RMS lateral error ≤ 0.12 m across the validated dataset.
+   8. During Hardware-in-the-Loop tests, end-to-end latency from sensor timestamp (t_sensor) to simulated actuation update (t_actuate) shall exhibit median ≤ 80 ms and 95th-percentile ≤ 180 ms. Measured latency must include serialization, network/IPC delay, inference, and simulation input processing.

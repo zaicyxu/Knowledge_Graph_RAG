@@ -98,6 +98,7 @@ b) **Constructing the logic-based knowledgebase**
 ## Updated on 7th Oct
 
 
+
 Example of the input questions. (Requirements)
 
 1. **Object Tracking Update**
@@ -138,4 +139,4 @@ Example of the input questions. (Requirements)
 
 10. **Lane Keeping and Trajectory Prediction**
 
-    The **vehicle control module shall predict and maintain a feasible trajectory** within current lane boundaries using current and anticipated environment data.
+    The **vehicle control module shall predict and maintain a feasible trajectory** within current lane boundaries using current and 

@@ -610,7 +610,6 @@ class Neo4jRAGSystem:
         - Output only the Prolog facts and rules.
         """
 
-
         print("\n[OPTIMIZED LLM PROMPT]\n" + input_text)
         return self.generate_with_llm(input_text)
 
@@ -751,9 +750,11 @@ def main():
 
 if __name__ == "__main__":
 
+
     # main()
     
     ### Test ####
     answer = main()
     #############
+
 

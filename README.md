@@ -97,8 +97,45 @@ b) **Constructing the logic-based knowledgebase**
 
 ## Updated on 7th Oct
 
-1. Example of the input questions. (Requirements)
-   1. Object tracks shall be updated within 100 ms after receiving new sensor data.
-   2. The object detector shall reliably detect pedestrians of ≥ 0.4 m width at a distance of up to 40 m with a probability of ≥ 0.9.
-   3. The segmentation network shall identify lane boundaries with a lateral error ≤ 0.2 m at 30 m range under nominal lighting.
-   4. The ML perception module shall periodically self-validate using reference scenes or known calibration targets to ensure runtime performance consistency.
+
+Example of the input questions. (Requirements)
+
+1. **Object Tracking Update**
+
+   The system **shall update all object tracks upon receipt of new sensor data** to ensure accurate and consistent environmental representation.
+
+2. **Pedestrian Detection**
+
+   The **object detection module shall reliably detect pedestrians** with accurate width and position estimation at a minimum distance of *[specify distance, e.g., 50 m]* under nominal conditions.
+
+3. **Lane Boundary Segmentation**
+
+   The **semantic segmentation network shall identify lane boundaries** and drivable areas under nominal lighting and weather conditions.
+
+4. **Perception Self-Validation**
+
+   The **machine learning (ML) perception module shall periodically self-validate** using reference scenes or calibration targets to ensure runtime consistency and prevent model drift.
+
+5. **Lidar Semantic Segmentation**
+
+   The **lidar perception subsystem shall perform semantic segmentation** of point cloud data and distribute classified data to functional components such as obstacle detection and free-space estimation.
+
+6. **Sensor Fusion**
+
+   The **sensor fusion module shall integrate data from lidar, radar, camera, and ultrasonic sensors** to generate a unified and temporally consistent environmental model.
+
+7. **Environmental Awareness**
+
+   Each **sensor subsystem shall analyze its respective portion of the external environment** (e.g., radar for long-range objects, cameras for visual classification, lidar for depth and geometry).
+
+8. **Parking Assistance**
+
+   The **parking assistance module shall detect and evaluate available parking spaces**, determine suitability, and guide the vehicle during parking maneuvers.
+
+9. **Adaptive Cruise and Car-Following**
+
+   The **adaptive cruise control and car-following modules shall detect leading vehicles and lane markings** to maintain safe following distances and lane discipline.
+
+10. **Lane Keeping and Trajectory Prediction**
+
+    The **vehicle control module shall predict and maintain a feasible trajectory** within current lane boundaries using current and anticipated environment data.

@@ -481,14 +481,11 @@ class Neo4jRAGSystem:
         """
         Convert a graph label or relation name into a safe Prolog predicate name.
         """
-        import re
         if not label:
             return "unknown"
         s = str(label).strip().lower().replace(" ", "_")
         s = re.sub(r'[^a-z0-9_]', '_', s)
-        # if it doesn't form a valid bare atom name, keep it quoted as fallback
         if not re.match(r'^[a-z_]\w*$', s):
-            # quoted atom - preserve original label inside quotes
             return f"'{label}'"
         return s
 
@@ -741,11 +738,11 @@ class Neo4jRAGSystem:
                 requirement_component(ReqA, ComponentName).
                 requirement_system_description(ReqA, SystemDescriptionName).
            - Example rule definitions:
-                reqrelatedalgorithm(ReqA, Algo) :- requirement(ReqA), requirement_algorithm(ReqA, Algo).
-                reqrelatedsensor(ReqA, S) :- requirement(ReqA), requirement_sensor(ReqA, S).
-                reqrelatedmodel(ReqA, M) :- requirement(ReqA), requirement_model(ReqA, M).
-                reqrelatedcomponent(ReqA, C) :- requirement(ReqA), requirement_component(ReqA, C).
-                reqrelatedsystemdescription(ReqA, SD) :- requirement(ReqA), requirement_system_description(ReqA, SD).
+                reqrelated_algorithm(ReqA, Algo) :- requirement(ReqA), requirement_algorithm(ReqA, Algo).
+                reqrelated_sensor(ReqA, S) :- requirement(ReqA), requirement_sensor(ReqA, S).
+                reqrelated_model(ReqA, M) :- requirement(ReqA), requirement_model(ReqA, M).
+                reqrelated_component(ReqA, C) :- requirement(ReqA), requirement_component(ReqA, C).
+                reqrelated_system_description(ReqA, SD) :- requirement(ReqA), requirement_system_description(ReqA, SD).
 
         ENTITY NAME INTEGRITY RULES (CRITICAL):
         - You MUST preserve exact spelling, capitalization, and spacing of all entity names as they appear in the knowledge base.
@@ -835,41 +832,27 @@ class Neo4jRAGSystem:
 
     def clean_response(self, text):
         """
-        Robustly clean LLM output for structured Prolog-like results.
-        Removes Markdown artifacts, stray punctuation, and normalizes spacing.
-        Ensures consistency with database entity naming.
+        Intelligently fix predicate names by detecting camelCase patterns and adding underscores
         """
         if not text:
             return ""
 
-        # Normalize newlines
+        # Basic cleaning
         text = text.replace('\r\n', '\n').replace('\r', '\n')
-
-        # Remove Markdown code blocks and inline ticks
         text = re.sub(r'```+', '', text)
-        text = re.sub(r'`([^`]*)`', r'\1', text)
 
-        # Remove Markdown headings and emphasis markers
-        text = re.sub(r'^\s{0,3}#{1,6}\s*', '', text, flags=re.MULTILINE)
-        text = re.sub(r'(\*\*|__)(.*?)\1', r'\2', text)
-        text = re.sub(r'(\*|_)(.*?)\1', r'\2', text)
+        # Smart predicate name correction: convert camelCase to snake_case
+        def convert_to_snake_case(match):
+            predicate = match.group(0)
+            # Convert camelCase to snake_case for all predicates starting with requirement/reqrelated
+            if predicate.startswith(('requirement', 'reqrelated')):
+                # Add underscore before uppercase letters (except first character)
+                converted = re.sub(r'(?<!^)(?=[A-Z])', '_', predicate).lower()
+                return converted
+            return predicate
 
-        # Standardize list markers
-        text = re.sub(r'^\s*[\*\-\+]\s+', '', text, flags=re.MULTILINE)
-        text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)
-
-        # Remove stray punctuation around parentheses
-        text = re.sub(r"'\s*([A-Za-z0-9_\- ]+)\s*'", r'\1', text)
-
-        # Remove duplicate periods
-        text = re.sub(r'\.\.+', '.', text)
-
-        # Collapse multiple blank lines
-        text = re.sub(r'\n\s*\n+', '\n\n', text)
-
-        # Trim trailing spaces
-        lines = [ln.rstrip() for ln in text.split('\n')]
-        text = '\n'.join(lines).strip()
+        # Apply to all words that look like predicate names
+        text = re.sub(r'\b(requirement|reqrelated)[a-zA-Z]+\b', convert_to_snake_case, text)
 
         return text
 

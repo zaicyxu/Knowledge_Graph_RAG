@@ -139,4 +139,46 @@ Example of the input questions. (Requirements)
 
 10. **Lane Keeping and Trajectory Prediction**
 
-    The **vehicle control module shall predict and maintain a feasible trajectory** within current lane boundaries using current and 
+    The **vehicle control module shall predict and maintain a feasible trajectory** within current lane boundaries using current and
+
+11，**Object Detection Accuracy**
+
+    The object detection module shall achieve at least 95% precision and recall for pedestrian detection under nominal lighting conditions.
+
+12. **Model Update Mechanism**
+
+    The ML model deployment process shall support over-the-air updates for trajectory prediction models without system downtime.
+	
+13. **Sensor Redundancy**
+
+    The system shall maintain functional safety through redundant sensor inputs from both camera and lidar for critical object detection tasks.
+
+14. **Real-Time Processing**
+
+    All perception algorithms shall process sensor data within 100 milliseconds to support real-time decision-making.
+
+15. **Brake Actuation Latencyv**
+
+    The PAEB system shall activate brakes within 150 milliseconds after pedestrian detection confirmation.
+
+16. **Trajectory Prediction Confidence**
+
+    The trajectory prediction module shall output a confidence score for each predicted path, with a minimum threshold of 80% for actuation.
+	
+17. **Adaptive Cruise Control Smoothness**
+
+    The ACC system shall adjust throttle and brake inputs smoothly to maintain passenger comfort while following a leading vehicle.
+	
+18. **Lane Keeping Assist Boundaries**
+
+    The lane keeping system shall only activate when lane boundaries are detected with high confidence and vehicle speed exceeds 60 km/h.
+
+19. **ML Safety Assurance Traceability**
+
+    Each ML safety requirement shall be traceable to one or more system-level safety requirements through the ML development flow.
+	
+20. **End-to-End Latency Budget**
+
+	The total latency from sensor data capture to actuator command shall not exceed 200 milliseconds for any safety-critical function.
+
+

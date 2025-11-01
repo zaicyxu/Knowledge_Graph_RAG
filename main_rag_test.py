@@ -830,32 +830,69 @@ class Neo4jRAGSystem:
             "source": raw_entity.get("source")
         }
 
-    def clean_response(self, text):
-        """
-        Intelligently fix predicate names by detecting camelCase patterns and adding underscores
-        """
+    def clean_response(self, text: str) -> str:
         if not text:
             return ""
 
-        # Basic cleaning
-        text = text.replace('\r\n', '\n').replace('\r', '\n')
-        text = re.sub(r'```+', '', text)
+        s = text.replace('\r\n', '\n').replace('\r', '\n')
+        lines = [ln.strip() for ln in s.split('\n') if ln.strip()]
 
-        # Smart predicate name correction: convert camelCase to snake_case
-        def convert_to_snake_case(match):
-            predicate = match.group(0)
-            # Convert camelCase to snake_case for all predicates starting with requirement/reqrelated
-            if predicate.startswith(('requirement', 'reqrelated')):
-                # Add underscore before uppercase letters (except first character)
-                converted = re.sub(r'(?<!^)(?=[A-Z])', '_', predicate).lower()
-                return converted
-            return predicate
+        deps, facts, rules = [], [], []
 
-        # Apply to all words that look like predicate names
-        text = re.sub(r'\b(requirement|reqrelated)[a-zA-Z]+\b', convert_to_snake_case, text)
+        dep_pred = re.compile(r'^(algorithm|model|sensors?|component|system_description)\s*\(.*\)\.?$', re.IGNORECASE)
+        fact_pred = re.compile(r'^requirement_[A-Za-z0-9_]*\s*\(.*\)\.?$', re.IGNORECASE)
+        rule_pred = re.compile(r'.*:-.*')
+        reqrel_pred = re.compile(r'^reqrelated_[A-Za-z0-9_]*', re.IGNORECASE)
 
-        return text
+        for ln in lines:
+            low = ln.lower()
+            if low in ("final answer:", "final answer", "prolog-based facts", "prolog-based rules", "dependency trace"):
+                continue
 
+            if rule_pred.search(ln) or reqrel_pred.match(ln):
+                rules.append(ln if ln.endswith('.') else ln + '.')
+                continue
+            if fact_pred.match(ln):
+                facts.append(ln if ln.endswith('.') else ln + '.')
+                continue
+            if dep_pred.match(ln):
+                deps.append(ln if ln.endswith('.') else ln + '.')
+                continue
+            if '(' in ln and ')' in ln:
+                deps.append(ln if ln.endswith('.') else ln + '.')
+                continue
+
+        def quote_after_comma(line):
+            # split at first '('
+            if '(' not in line or ')' not in line:
+                return line
+            head, rest = line.split('(', 1)
+            args = rest.rstrip(').').split(',')
+            new_args = []
+            for a in args:
+                core = a.strip().strip("'\"")
+                new_args.append(f"'{core}'")
+            return f"{head}({', '.join(new_args)})."
+
+        facts = [quote_after_comma(f) for f in facts]
+        deps = [quote_after_comma(d) for d in deps]
+
+        out = []
+        out.append(" ")
+        out.append("Dependency Trace")
+        out.extend(deps)
+        out.append("")
+
+        if facts:
+            out.append("Prolog-Based Facts")
+            out.extend(facts)
+            out.append("")
+
+        if rules:
+            out.append("Prolog-Based Rules")
+            out.extend(rules)
+
+        return "\n".join(out)
 
     def rag_pipeline(self, user_question):
         """Execute the RAG pipeline with embedding-based retrieval and in-context learning."""

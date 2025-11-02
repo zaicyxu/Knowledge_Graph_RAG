@@ -143,7 +143,7 @@ Example of the input questions. (Requirements)
 
 11，**Object Detection Accuracy**
 
-    The object detection module shall achieve at least 95% precision and recall for pedestrian detection under nominal lighting conditions.
+​	The object detection module shall achieve at least 95% precision and recall for pedestrian detection 	under nominal lighting conditions.
 
 12. **Model Update Mechanism**
 
@@ -180,5 +180,4 @@ Example of the input questions. (Requirements)
 20. **End-to-End Latency Budget**
 
 	The total latency from sensor data capture to actuator command shall not exceed 200 milliseconds for any safety-critical function.
-
 

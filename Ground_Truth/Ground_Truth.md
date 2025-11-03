@@ -10,7 +10,7 @@
 7. Each **sensor subsystem shall analyze its respective portion of the external environment** (e.g., radar for long-range objects, cameras for visual classification, lidar for depth and geometry).
 8. The **parking assistance module shall detect and evaluate available parking spaces**, determine suitability, and guide the vehicle during parking maneuvers.
 9. The **adaptive cruise control and car-following modules shall detect leading vehicles and lane markings** to maintain safe following distances and lane discipline.
-10. The **vehicle control module shall predict and maintain a feasible trajectory** within current lane boundaries using current and
+10. The **vehicle control module shall predict and maintain a feasible trajectory** within current lane boundaries
 11. The object detection module shall achieve at least 95% precision and recall for pedestrian detection 	under nominal lighting conditions.
 12. The ML model deployment process shall support over-the-air updates for trajectory prediction models without system downtime.
 13. The system shall maintain functional safety through redundant sensor inputs from both camera and lidar for critical object detection tasks.

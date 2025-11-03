@@ -84,15 +84,68 @@
 	},
 	
     {
-      "id": 9,
-      "name": "The adaptive cruise control and car-following modules shall detect leading vehicles and lane markings to maintain safe following distances and lane discipline.",
-      "1-hop": ["Adaptive Cruise Control"],
-      "2-hop": ["Lane Detection","Object Tracking","Highway", "Traffic Sign", "Sunny", "Dawn", "Night","Lane Mark"],
-      "3-hop":["ENet-SAD","U-Net"]
-        
-      
+      "id": 10,
+      "name": "The vehicle control module shall predict and maintain a feasible trajectory within current lane boundaries.",
+      "1-hop": ["Trajectory Prediction","Lane Detection","Space Detection"],
+      "2-hop": ["Lane Keeping","Adaptive Cruise Control","ENet-SAD","Social-LSTM", "Automated Parking Assist","U-Net","YOLOv5"],
+      "3-hop":["Mono Camera","Pedestrians", "City Road", "Traffic Sign", "Sunny", "Dawn", "Night","Lane Mark", "Highway", "Vehicles"]
 	},
-    
+	
+    {  "id": 11,
+      "name": "The object detection module shall achieve at least 95% precision and recall for pedestrian detection under nominal lighting conditions.",
+      "1-hop": ["Object Detection"],
+      "2-hop": ["PAEB","YOLOv5"],
+      "3-hop":["Mono Camera","Pedestrians", "City Road", "Sunny"]
+	},
+	
+	 {  "id": 12,
+      "name": "The ML model deployment process shall support over-the-air updates for trajectory prediction models without system downtime.",
+      "1-hop": ["Trajectory Prediction"],
+      "2-hop": ["PAEB","YOLOv5"],
+      "3-hop":["Mono Camera","Pedestrians", "City Road", "Sunny"]
+	},
+	
+	 {  "id": 13,
+      "name": "The system shall maintain functional safety through redundant sensor inputs from both camera and lidar for critical object detection tasks.",
+      "1-hop": ["Object Detection"],
+      "2-hop": ["Lidar","Mono Camera","PAEB"]
+	},
+	
+	 {  "id": 14,
+      "name": "All perception algorithms shall process sensor data within 100 milliseconds to support real-time decision-making.",
+      "1-hop": ["Object Detection","Trajectory Prediction","Lane Detection","Semantic Segmantiation","Object Tracking","Space Detection"],
+      "2-hop": ["Lidar","Mono Camera","PAEB"]
+	},
+	
+	 {  "id": 15,
+      "name": "The PAEB system shall activate brakes within 150 milliseconds after pedestrian detection confirmation",
+      "1-hop": ["PAEB"],
+      "2-hop": ["Object Detection","Semantic Segmantiation"],
+      "3-hop": ["YOLOv5","PointNet++"],
+      "4-hop": ["Lidar","Mono Camera","Brakes"]
+	},
+	
+	 {  "id": 16,
+      "name": "The trajectory prediction module shall output a confidence score for each predicted path, with a minimum threshold of 80% for actuation.",
+      "1-hop": ["Trajectory Prediction"],
+      "2-hop": ["Lane Keeping","Social-LSTM"],
+      "3-hop": ["Mono Camera","Vehicles","Dawn","Sunny","Highway","Night"]
+	},
+	
+	 {  "id": 17,
+      "name": "The Adaptive Cruise Control system shall adjust throttle and brake inputs smoothly to maintain passenger comfort while following a leading vehicle.",
+      "1-hop": ["Lane Detection","Object Tracking","Highway","Sunny","Night","Dawn","Traffic Sign"],
+      "2-hop": ["Trans Track","ENet-SAD"],
+      "3-hop": ["Mono Camera","Brakes","Throttle"]
+	},
+	
+	 {  "id": 18,
+      "name": "The lane keeping system shall only activate when lane boundaries are detected with high confidence and vehicle speed exceeds 60 km/h.",
+      "1-hop": ["Lane Detection","Trajectory Prediction","Object Tracking","Highway","Sunny","Night","Dawn","Vehicles"],
+      "2-hop": ["Social-LSTM","ENet-SAD"],
+      "3-hop": ["Mono Camera"]
+	}
+
     
     
     

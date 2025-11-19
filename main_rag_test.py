@@ -264,23 +264,14 @@ class Neo4jRAGSystem:
                                    similarity_threshold=configuration.SIMILARITY_THRESHOLD):
         """
         Hybrid retrieval that prioritizes keyword-driven embedding search.
-
-        Steps:
-        1. Extract domain terms via LLM (local_extract_domain_terms).
-        2. Compute embeddings for each domain term (once).
-        3. For each candidate DB node, compute the max cosine similarity between
-           node.embedding and any domain-term embedding.
-        4. If no domain-term embeddings are available, fall back to sentence embedding.
-        5. Use max-term-sim as the primary filter; then combine with a lexical
-           domain-term match score for reranking.
         """
-        # 1) Domain term extraction (LLM)
+        # Domain term extraction 
         domain_terms = self.local_extract_domain_terms(query_text)
         if not domain_terms:
             # fallback to original keyword extractor
             domain_terms = self.extract_keywords(query_text)
 
-        # 2) Compute embeddings for domain terms (cache results to avoid double calls)
+        # Compute embeddings for domain terms 
         term_embeddings = []
         for term in domain_terms:
             emb = None
@@ -291,7 +282,7 @@ class Neo4jRAGSystem:
             if emb is not None:
                 term_embeddings.append((term, emb))
 
-        # 3) If we couldn't get any term embeddings, fall back to whole-sentence embedding
+        # If couldn't get any term embeddings, fall back to whole-sentence embedding
         use_query_emb = False
         query_emb = None
         if not term_embeddings:
@@ -301,12 +292,12 @@ class Neo4jRAGSystem:
                 return []
             use_query_emb = True
 
-        # 4) Determine depth/hop limit
+        # Determine depth/hop limit
         depth = self.determine_query_depth(query_text)
         hop_limit = min(depth, 4)
         neighbor_limit = 10
 
-        # 5) Similarity retrieval using term embeddings as the reference
+        # Similarity retrieval using term embeddings as the reference
         sim_candidates = []
         seen_ids = set()
 
@@ -346,11 +337,11 @@ class Neo4jRAGSystem:
                         if emb is None:
                             continue
 
-                        # compute similarity: max over term embeddings OR sentence embedding fallback
+                        # compute similarity
                         node_emb = emb
                         sim_score = 0.0
                         if use_query_emb:
-                            # fallback: compare with entire sentence embedding
+                            # fallback
                             sim_score = self.cosine_similarity(query_emb, node_emb)
                         else:
                             # compute max similarity over domain-term embeddings
@@ -373,7 +364,7 @@ class Neo4jRAGSystem:
         sim_candidates.sort(key=lambda x: x[1], reverse=True)
         base_nodes = sim_candidates[:top_k]
 
-        # 6) Depth-based neighbor expansion (BFS by hop)
+        # Depth-based neighbor expansion 
         expanded = {}
         with self.driver.session() as session:
             for rec, sim_score in base_nodes:
@@ -411,7 +402,7 @@ class Neo4jRAGSystem:
                     except Exception:
                         continue
 
-        # 7) Score final candidates: combine sim (from term-based retrieval) with lexical domain-term match
+        # Score final candidates
         scored = []
         domain_set = set(domain_terms)
         for nid, info in expanded.items():
@@ -447,7 +438,7 @@ class Neo4jRAGSystem:
         scored.sort(key=lambda x: x[1], reverse=True)
         final_nodes = scored[:top_k]
 
-        # 8) Normalize output schema (same shape as original)
+        # Normalize output schema
         results = []
         with self.driver.session() as session:
             for info, score in final_nodes:
@@ -1011,3 +1002,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

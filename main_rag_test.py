@@ -9,7 +9,7 @@
 @Time: Sep/2025
 @Author: Rui Xu
 @Contact: rxu@kth.se
-@Version: 0.2.7
+@Version: 0.3.2
 @Description: Based on the original RAG system, the output format was modified to conform to the
               Prolog fact and rules format standards for subsequent processing.
 """
@@ -23,11 +23,13 @@ import google.generativeai as genai
 import configuration
 from sklearn.decomposition import PCA
 from function_call import SystemTools, FactGenerator
+from google import genai as gen
 
 
 # Configure Gemini API
 genai.configure(api_key=configuration.GEMINI_API_KEY)
 model = genai.GenerativeModel(configuration.GENERATION_MODEL)
+# client = gen.Client(api_key=configuration.GEMINI_API_KEY)
 
 
 class Neo4jRAGSystem:
@@ -35,6 +37,7 @@ class Neo4jRAGSystem:
         self.driver = GraphDatabase.driver(uri, auth=(user, password), max_connection_lifetime=60)
         self.cache_file = cache_file
         self.embedding_cache = self.load_cache()
+        self.client = gen.Client(api_key=configuration.GEMINI_API_KEY_1)
 
     def close(self):
         self.driver.close()
@@ -124,11 +127,10 @@ class Neo4jRAGSystem:
             print(f"Error generating embedding: {e}")
             return None
 
-    def extract_keywords(self, query_text, similarity_threshold=configuration.KEYWORD_SIMILARITY_THRESHOLD):
+    def extract_keywords(self, query_text, stop_words=configuration.STOP_WORDS, similarity_threshold=configuration.KEYWORD_SIMILARITY_THRESHOLD):
         tokens = re.findall(r'\b\w+\b', query_text)
         tokens = [t for t in tokens if
-                  t.lower() not in {"the", "a", "an", "is", "are", "what", "which", "how", "does", "do", "to", "in",
-                                    "of", "and"}]
+                  t.lower() not in stop_words]
         tokens = [t for t in tokens if len(t) >= 1]
         # add bigrams
         bigrams = [' '.join([tokens[i], tokens[i + 1]]) for i in range(len(tokens) - 1)]
@@ -187,17 +189,19 @@ class Neo4jRAGSystem:
         combined_score = (configuration.SEMANTIC_WEIGHT * semantic_score +
                           configuration.SYNTACTIC_WEIGHT * syntax_score)
 
-        if combined_score < 0.3:
+        if combined_score < 0.2:
             depth = 1
-        elif 0.3 <= combined_score < 0.6:
+        elif 0.2 <= combined_score < 0.4:
             depth = 2
-        elif 0.6 <= combined_score < 0.8:
+        elif 0.4 <= combined_score < 0.6:
             depth = 3
-        else:
+        elif 0.6 <= combined_score < 0.8:
             depth = 4
+        else:
+            depth = 5
 
-        if re.search(r'\b(indirect|through|chain|subsidiary)\b', query_text, re.I):
-            depth = max(depth, 3)
+        if re.search(r'\b(trace|chain|path|flow|pipeline|scenario|environment|context)\b', query_text, re.I):
+            depth = max(depth, 5)
 
         return depth
 
@@ -210,7 +214,7 @@ class Neo4jRAGSystem:
         # Normalize sentence length to a max of 15 words.
         length_score = min(len(words) / 15, 1.0)
 
-        wh_words = {configuration.WH_WORDS}
+        wh_words = configuration.WH_WORDS
         wh_score = min(sum(1 for word in words if word.lower() in wh_words) / 2, 1.0)
 
         # Count clauses
@@ -222,216 +226,263 @@ class Neo4jRAGSystem:
                 wh_score * configuration.WH_WORD_WEIGHT +
                 clause_score * configuration.CLAUSE_WEIGHT)
 
-    def analyze_query_intent_with_LLM(self, query_text):
-        """
-        Parse query intent through LLM to extract target entities, relationships, and filter conditions.
-        Optimized for the specific MLSafety knowledge graph structure.
-        """
+    def local_extract_domain_terms(self, req_text):
+            """
+            Local replica of extract_svo() from domain.py,
+            but defined inside this function so no external import is needed.
+            """
+            prompt = """
+            You are given a requirement sentence related to Autonomous Driving Systems.
+            Extract domain-specific technical phrases.
 
-        system_prompt = """
-                        You are an AI assistant specialized in Machine Learning Safety knowledge graph queries.
+            Rules:
+            - Include only meaningful technical or domain-specific phrases.
+            - Exclude generic functional words ("shall", "ensure", etc.).
+            - Prefer noun phrases or short domain expressions.
+            - Each phrase must appear exactly in the text.
+            - No duplicates.
+            - Ignore content inside brackets.
+            - Output ONLY JSON array of strings.
+            """
 
-                        DOMAIN CONTEXT:
-                        - This is an ML Safety knowledge graph focusing on safety-critical systems
-                        - Core components: Sensors, algorithms, ML_Flow, Safety_Requirements
-                        - Data flow: Sensors → Collect_Data → algorithms → ML_Flow → Safety_Requirements
-
-                        ENTITY HIERARCHY:
-                        1. System Level: System_Description, System_Safety_Requirement
-                        2. ML Pipeline: ML_Flow, algorithms, Sensors, actuators
-                        3. Safety Requirements: ML_Safety_Requirement, functional, functionalility
-                        4. Components: Sensors, actuators, algorithms
-
-                        RELATIONSHIP SEMANTICS:
-                        - NEXT: Sequential flow between ML_Flow components
-                        - Input/Output: Data flow direction
-                        - Consist/Include: Composition relationships
-                        - Serve: Functional serving relationships
-                        - Collect_Data: Sensor data collection
-
-                        QUERY PATTERN EXAMPLES:
-                        - "Which sensors feed data to anomaly detection flow?" → Sensors + Collect_Data + ML_Flow
-                        - "What safety requirements apply to the prediction algorithm?" → ML_Safety_Requirement + algorithms
-                        - "Show the ML flow sequence for system X" → ML_Flow + NEXT relationships
-
-                        Extract query intent in JSON format:
-                        {
-                            "entities": ["primary_entity", "secondary_entity"],
-                            "relationships": ["key_relationship", "supporting_relationship"],
-                            "filters": {"property": "value", "name_contains": "keyword"}
-                        }
-
-                        Focus on safety and data flow aspects of the query.
-                        """
-
-        response = model.generate_content(system_prompt + "\nUser question: " + query_text)
-
-        try:
-            return json.loads(response.text)
-        except Exception:
-            return {"entities": [], "relationships": [], "filters": {}}
-
-    def retrieve_relevant_entities(self, query_text, top_k=configuration.TOP_K_RESULTS,
-                                   similarity_threshold=configuration.SIMILARITY_THRESHOLD,
-                                   depth=configuration.DEFAULT_QUERY_DEPTH):
-        """
-        Retrieve relevant entities from Neo4j and return them in the expected schema.
-        """
-        keywords = self.extract_keywords(query_text)
-        if not keywords:
-            print("[WARN] No keywords extracted, using similarity-based retrieval only.")
-            keywords = []
-
-        # get labels in DB
-        with self.driver.session() as session:
             try:
-                result = session.run("CALL db.labels()")
-                existing_labels = {record["label"] for record in result}
+                response = self.client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=prompt + "\n\n" + req_text,
+                    config={
+                        "temperature": 0.0,
+                        "response_mime_type": "application/json"
+                    }
+                )
+                return [t.lower() for t in json.loads(response.text)]
             except Exception as e:
-                print(f"[ERROR] Could not fetch db labels: {e}")
-                existing_labels = set()
+                print(f"[WARN] domain-term extraction failed: {e}")
+                return []
 
-        desired_labels = configuration.DESIRED_LABELS
-        selected_labels = desired_labels.intersection(existing_labels)
-        if not selected_labels:
-            print("[WARN] No desired labels matched db.labels(). Using all existing labels for search.")
-            selected_labels = existing_labels if existing_labels else desired_labels
-
-        # Keyword-based Cypher
-        cypher_template = """
-        MATCH p = (n)-[*1..{DEPTH}]-(m)
-        WHERE any(kw IN $keywords WHERE any(x IN nodes(p) WHERE (
-                (x.name IS NOT NULL AND toLower(x.name) CONTAINS kw)
-                OR
-                (x.type IS NOT NULL AND toLower(x.type) CONTAINS kw)
-                OR
-                any(lbl IN labels(x) WHERE toLower(lbl) CONTAINS kw)
-            )))
-        WITH p, nodes(p) AS np
-        UNWIND [x IN np WHERE any(kw IN $keywords WHERE (
-                (x.name IS NOT NULL AND toLower(x.name) CONTAINS kw)
-                OR
-                (x.type IS NOT NULL AND toLower(x.type) CONTAINS kw)
-                OR
-                any(lbl IN labels(x) WHERE toLower(lbl) CONTAINS kw)
-            ))] AS anchor
-        RETURN DISTINCT
-            elementId(anchor) AS node1_id,
-            anchor.name AS node1_name,
-            labels(anchor) AS node1_type,
-            [rel IN relationships(p) | type(rel)] AS relations,
-            [x IN np | {id: elementId(x), name: x.name, type: labels(x)}] AS connected_nodes
-        LIMIT 200
+    def retrieve_relevant_entities(self, query_text,
+                                   top_k=configuration.TOP_K_RESULTS,
+                                   similarity_threshold=configuration.SIMILARITY_THRESHOLD):
         """
-        cypher_query = cypher_template.replace("{DEPTH}", str(depth)).replace(
-            "{MAX_RESULTS}", str(configuration.MAX_RETRIEVAL_RESULTS))
+        Hybrid retrieval that prioritizes keyword-driven embedding search.
 
-        keyword_entities = []
-        if keywords:
-            with self.driver.session() as session:
-                try:
-                    raw = session.run(cypher_query, {"keywords": [kw.lower() for kw in keywords]}).data()
-                    for rec in raw:
-                        node1 = {
-                            "id": rec.get("node1_id"),
-                            "name": rec.get("node1_name"),
-                            "type": rec.get("node1_type")
-                        }
-                        conn = rec.get("connected_nodes") or []
-                        relations = rec.get("relations") or []
-                        keyword_entities.append({
-                            "node1": node1,
-                            "relations": relations,
-                            "connected_nodes": conn
-                        })
-                except Exception as e:
-                    print(f"[ERROR] Keyword search failed: {e}")
-                    keyword_entities = []
+        Steps:
+        1. Extract domain terms via LLM (local_extract_domain_terms).
+        2. Compute embeddings for each domain term (once).
+        3. For each candidate DB node, compute the max cosine similarity between
+           node.embedding and any domain-term embedding.
+        4. If no domain-term embeddings are available, fall back to sentence embedding.
+        5. Use max-term-sim as the primary filter; then combine with a lexical
+           domain-term match score for reranking.
+        """
+        # 1) Domain term extraction (LLM)
+        domain_terms = self.local_extract_domain_terms(query_text)
+        if not domain_terms:
+            # fallback to original keyword extractor
+            domain_terms = self.extract_keywords(query_text)
 
-        if keyword_entities:
-            # mark source for debug and normalize schema
-            for e in keyword_entities:
-                e['source'] = 'keyword'
-            keyword_entities = [self.normalize_entity(e) for e in keyword_entities]
-            print(f"[INFO] Keyword-based match found: {len(keyword_entities)} entities.")
-            return keyword_entities
+        # 2) Compute embeddings for domain terms (cache results to avoid double calls)
+        term_embeddings = []
+        for term in domain_terms:
+            emb = None
+            try:
+                emb = self.get_embedding(term)
+            except Exception:
+                emb = None
+            if emb is not None:
+                term_embeddings.append((term, emb))
 
-        # Similarity fallback
-        print("[INFO] No keyword-based match found. Falling back to similarity-based retrieval...")
+        # 3) If we couldn't get any term embeddings, fall back to whole-sentence embedding
+        use_query_emb = False
+        query_emb = None
+        if not term_embeddings:
+            query_emb = self.get_embedding(query_text)
+            if query_emb is None:
+                print("[ERROR] Query embedding failed and no term embeddings available.")
+                return []
+            use_query_emb = True
 
-        query_embedding = self.get_embedding(query_text)
-        if query_embedding is None:
-            print("[ERROR] Failed to generate query embedding.")
-            return []
+        # 4) Determine depth/hop limit
+        depth = self.determine_query_depth(query_text)
+        hop_limit = min(depth, 4)
+        neighbor_limit = 10
 
-        similarity_entities = []
+        # 5) Similarity retrieval using term embeddings as the reference
+        sim_candidates = []
         seen_ids = set()
 
         with self.driver.session() as session:
-            for label in selected_labels:
+            try:
+                labels_res = session.run("CALL db.labels()")
+                db_labels = {r["label"] for r in labels_res}
+            except Exception:
+                db_labels = set()
+
+            target_labels = configuration.DESIRED_LABELS.intersection(db_labels)
+            if not target_labels:
+                target_labels = db_labels or configuration.DESIRED_LABELS
+
+            for label in target_labels:
                 try:
-                    res = session.run(
-                        f"MATCH (n:{label}) WHERE n.embedding IS NOT NULL RETURN elementId(n) AS id, n.name AS name, n.embedding AS embedding, labels(n) AS labels LIMIT 100"
-                    )
-                    for record in res:
-                        rid = record["id"]
-                        name = record.get("name")
-                        emb = record.get("embedding")
-                        if emb is None:
+                    q = f"""
+                    MATCH (n:{label})
+                    WHERE n.embedding IS NOT NULL
+                    RETURN elementId(n) AS id, n.name AS name,
+                           n.embedding AS embedding, labels(n) AS labels
+                    """
+                    results = session.run(q)
+
+                    for rec in results:
+                        rid = rec["id"]
+                        if rid in seen_ids:
                             continue
+
+                        emb = rec["embedding"]
+                        # normalize embedding if it's stored as JSON string
                         if isinstance(emb, str):
                             try:
                                 emb = json.loads(emb)
                             except Exception:
                                 continue
-                        sim = self.cosine_similarity(query_embedding, emb)
-                        print(f"[DEBUG] sim({name}) = {sim:.4f}")
-                        if sim >= similarity_threshold and rid not in seen_ids:
-                            # fetch neighbours/relations for this node to build connected_nodes
-                            try:
-                                neighbor_q = session.run(
-                                    """
-                                    MATCH (n)
-                                    WHERE elementId(n) = $id
-                                    OPTIONAL MATCH (n)-[r]-(m)
-                                    RETURN collect(DISTINCT {id: elementId(m), name: m.name, type: labels(m)}) AS connected_nodes,
-                                           collect(DISTINCT type(r)) AS relations,
-                                           labels(n) AS node_labels,
-                                           n.name AS node_name
-                                    """,
-                                    {"id": rid}
-                                ).single()
-                                conn_nodes = neighbor_q["connected_nodes"] or []
-                                relations = neighbor_q["relations"] or []
-                                node_labels = neighbor_q["node_labels"] or record.get("labels")
-                                node_name = neighbor_q["node_name"] or name
-                            except Exception as e:
-                                print(f"[WARN] Could not fetch neighbours for node id {rid}: {e}")
-                                conn_nodes = []
-                                relations = []
-                                node_labels = record.get("labels")
-                                node_name = name
+                        if emb is None:
+                            continue
 
-                            entity = {
-                                "node1": {"id": rid, "name": node_name, "type": node_labels},
-                                "relations": relations,
-                                "connected_nodes": conn_nodes
-                            }
-                            similarity_entities.append(entity)
+                        # compute similarity: max over term embeddings OR sentence embedding fallback
+                        node_emb = emb
+                        sim_score = 0.0
+                        if use_query_emb:
+                            # fallback: compare with entire sentence embedding
+                            sim_score = self.cosine_similarity(query_emb, node_emb)
+                        else:
+                            # compute max similarity over domain-term embeddings
+                            max_sim = 0.0
+                            for _, term_emb in term_embeddings:
+                                s = self.cosine_similarity(term_emb, node_emb)
+                                if s > max_sim:
+                                    max_sim = s
+                            sim_score = max_sim
+
+                        # filter by threshold
+                        if sim_score >= similarity_threshold:
+                            sim_candidates.append((rec, sim_score))
                             seen_ids.add(rid)
+
                 except Exception as e:
-                    print(f"[ERROR] Similarity search failed for label {label}: {e}")
-                    continue
+                    print(f"[WARN] Similarity retrieval failed for label {label}: {e}")
 
-        if similarity_entities:
-            for e in similarity_entities:
-                e['source'] = 'similarity'
-            similarity_entities = [self.normalize_entity(e) for e in similarity_entities]
-            print(f"[INFO] Similarity fallback found {len(similarity_entities)} results.")
-            return similarity_entities
+        # sort and keep top_k by sim score
+        sim_candidates.sort(key=lambda x: x[1], reverse=True)
+        base_nodes = sim_candidates[:top_k]
 
-        print("[INFO] Similarity fallback found 0 additional results.")
-        return []
+        # 6) Depth-based neighbor expansion (BFS by hop)
+        expanded = {}
+        with self.driver.session() as session:
+            for rec, sim_score in base_nodes:
+                nid = rec["id"]
+                expanded[nid] = {
+                    "id": nid,
+                    "name": rec.get("name") or "",
+                    "labels": rec.get("labels") or [],
+                    "embedding": rec.get("embedding"),
+                    "sim": sim_score
+                }
+
+                for hop in range(1, hop_limit + 1):
+                    try:
+                        q = f"""
+                        MATCH (n) WHERE elementId(n)=$nid
+                        MATCH (n)-[*{hop}]-(m)
+                        RETURN DISTINCT elementId(m) AS id,
+                                        m.name AS name,
+                                        labels(m) AS labels,
+                                        m.embedding AS embedding
+                        LIMIT {neighbor_limit}
+                        """
+                        neighbors = session.run(q, {"nid": nid}).data()
+                        for nb in neighbors:
+                            nbid = nb["id"]
+                            if nbid not in expanded:
+                                expanded[nbid] = {
+                                    "id": nbid,
+                                    "name": nb.get("name") or "",
+                                    "labels": nb.get("labels") or [],
+                                    "embedding": nb.get("embedding"),
+                                    "sim": 0.0
+                                }
+                    except Exception:
+                        continue
+
+        # 7) Score final candidates: combine sim (from term-based retrieval) with lexical domain-term match
+        scored = []
+        domain_set = set(domain_terms)
+        for nid, info in expanded.items():
+            name = (info["name"] or "").lower()
+            # lexical match score: how many domain terms appear in the node name
+            kw_score = sum(1 for t in domain_set if t in name)
+            kw_score = min(kw_score, 3) / 3.0  # normalize to [0,1]
+
+            # use the sim already stored; if missing recalc as fallback
+            sim_val = info.get("sim", 0.0)
+            if sim_val == 0.0:
+                # try compute with term embeddings if available
+                node_emb = info.get("embedding")
+                if isinstance(node_emb, str):
+                    try:
+                        node_emb = json.loads(node_emb)
+                    except Exception:
+                        node_emb = None
+                if node_emb is not None and term_embeddings:
+                    max_sim = 0.0
+                    for _, term_emb in term_embeddings:
+                        s = self.cosine_similarity(term_emb, node_emb)
+                        if s > max_sim:
+                            max_sim = s
+                    sim_val = max_sim
+                elif node_emb is not None and use_query_emb and query_emb is not None:
+                    sim_val = self.cosine_similarity(query_emb, node_emb)
+
+            # final score: weighted combination (adjust weights as needed)
+            final_score = 0.6 * sim_val + 0.4 * kw_score
+            scored.append((info, final_score))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        final_nodes = scored[:top_k]
+
+        # 8) Normalize output schema (same shape as original)
+        results = []
+        with self.driver.session() as session:
+            for info, score in final_nodes:
+                nid = info["id"]
+                try:
+                    q = session.run(
+                        """
+                        MATCH (n) WHERE elementId(n)=$id
+                        OPTIONAL MATCH (n)-[r]-(m)
+                        RETURN collect({id:elementId(m), name:m.name, type:labels(m)}) AS cn,
+                               collect(type(r)) AS rel,
+                               labels(n) AS labels,
+                               n.name AS name
+                        """,
+                        {"id": nid}
+                    ).single()
+
+                    raw = {
+                        "node1": {"id": nid, "name": q["name"], "type": q["labels"]},
+                        "relations": q["rel"],
+                        "connected_nodes": q["cn"],
+                        "source": "hybrid"
+                    }
+                except Exception:
+                    raw = {
+                        "node1": {"id": nid, "name": info["name"], "type": info["labels"]},
+                        "relations": [],
+                        "connected_nodes": [],
+                        "source": "hybrid"
+                    }
+
+                results.append(self.normalize_entity(raw))
+
+        print(f"[INFO] Hybrid retrieval returned {len(results)} entities.")
+        return results
 
     def _to_prolog_atom(self, text, fallback=None):
         """
@@ -707,6 +758,64 @@ class Neo4jRAGSystem:
         facts_str = "\n".join(prolog_facts) if prolog_facts else "% No facts available"
 
         # Prompt engineering
+        # input_text = f"""
+        # ROLE:
+        # You are an expert in automotive safety engineering and autonomous driving systems.
+        # Your task is to analyze the safety requirements of an Automated Driving System (ADS)
+        # using the provided structured knowledge base written in Prolog-like format.
+        #
+        # KNOWLEDGE BASE (DO NOT MODIFY):
+        # {facts_str}
+        #
+        # USER QUESTION:
+        # {user_question}
+        #
+        # INSTRUCTIONS:
+        # 1. Identify and summarize the key safety requirements relevant to the question.
+        # 2. Analyze the knowledge base to find all directly referenced single-element entities and facts that describe or support these requirements.
+        # 3. Evaluate whether the described system satisfies each requirement, citing exact elements from the knowledge base.
+        # 4. Perform DEPENDENCY TRACING:
+        #    - List all directly referenced single-argument facts (e.g., algorithm(ObjectTracking)., sensor(Lidar).).
+        #    - Exclude compound relations (e.g., consist(ObjectTracking, ACC). or serve(Mono Camera, Object Tracking).).
+        #    - Each fact must appear exactly as written in the knowledge base, preserving capitalization, spacing, and formatting.
+        # 5. Provide a final structured answer with two strictly separated sections:
+        #    (1) Dependency Trace: all matched single-argument entities.
+        #    (2) Prolog-Based Rules: relations connecting these entities to requirements.
+        # 6. Generate Prolog rules that define relationships between each requirement (ReqA) and its matched entities.
+        #    - Example schema:
+        #         requirement_algorithm(ReqA, AlgorithmName).
+        #         requirement_sensor(ReqA, SensorName).
+        #         requirement_model(ReqA, ModelName).
+        #         requirement_component(ReqA, ComponentName).
+        #         requirement_system_description(ReqA, SystemDescriptionName).
+        #    - Example rule definitions:
+        #         reqrelated_algorithm(ReqA, Algo) :- requirement(ReqA), requirement_algorithm(ReqA, Algo).
+        #         reqrelated_sensor(ReqA, S) :- requirement(ReqA), requirement_sensor(ReqA, S).
+        #         reqrelated_model(ReqA, M) :- requirement(ReqA), requirement_model(ReqA, M).
+        #         reqrelated_component(ReqA, C) :- requirement(ReqA), requirement_component(ReqA, C).
+        #         reqrelated_system_description(ReqA, SD) :- requirement(ReqA), requirement_system_description(ReqA, SD).
+        #
+        # ENTITY NAME INTEGRITY RULES (CRITICAL):
+        # - You MUST preserve exact spelling, capitalization, and spacing of all entity names as they appear in the knowledge base.
+        # - Never modify, quote, or translate any entity name.
+        # - Treat entity names as literal identifiers.
+        # - Any quotation marks or punctuation around entity names will be removed automatically after generation, so output them as-is.
+        #
+        # IMPORTANT CONSTRAINTS:
+        # - Do not invent or infer missing entities.
+        # - If no matching elements are found, explicitly write: "No matching element found."
+        # - Use only minimal and clear text — do not output natural-language reasoning.
+        # - The final answer must be fully structured, containing only the two required sections.
+        #
+        # OUTPUT FORMAT (STRICT):
+        # Dependency Trace
+        # [list of single-argument entities, one per line, ending with '.']
+        #
+        # Prolog-Based Rules
+        # [requirement_* and reqrelated* facts, one per line, ending with '.']
+        #
+        # Final Answer:
+        # """
         input_text = f"""
         ROLE:
         You are an expert in automotive safety engineering and autonomous driving systems.
@@ -724,25 +833,10 @@ class Neo4jRAGSystem:
         2. Analyze the knowledge base to find all directly referenced single-element entities and facts that describe or support these requirements.
         3. Evaluate whether the described system satisfies each requirement, citing exact elements from the knowledge base.
         4. Perform DEPENDENCY TRACING:
-           - List all directly referenced single-argument facts (e.g., algorithm(ObjectTracking)., sensor(Lidar).).
-           - Exclude compound relations (e.g., consist(ObjectTracking, ACC). or serve(Mono Camera, Object Tracking).).
+           - List all directly referenced single-argument facts (e.g., algorithm(ObjectTracking)., model(YOLOv5)., sensor(Lidar).).
            - Each fact must appear exactly as written in the knowledge base, preserving capitalization, spacing, and formatting.
         5. Provide a final structured answer with two strictly separated sections:
-           (1) Dependency Trace: all matched single-argument entities.
-           (2) Prolog-Based Rules: relations connecting these entities to requirements.
-        6. Generate Prolog rules that define relationships between each requirement (ReqA) and its matched entities.
-           - Example schema:
-                requirement_algorithm(ReqA, AlgorithmName).
-                requirement_sensor(ReqA, SensorName).
-                requirement_model(ReqA, ModelName).
-                requirement_component(ReqA, ComponentName).
-                requirement_system_description(ReqA, SystemDescriptionName).
-           - Example rule definitions:
-                reqrelated_algorithm(ReqA, Algo) :- requirement(ReqA), requirement_algorithm(ReqA, Algo).
-                reqrelated_sensor(ReqA, S) :- requirement(ReqA), requirement_sensor(ReqA, S).
-                reqrelated_model(ReqA, M) :- requirement(ReqA), requirement_model(ReqA, M).
-                reqrelated_component(ReqA, C) :- requirement(ReqA), requirement_component(ReqA, C).
-                reqrelated_system_description(ReqA, SD) :- requirement(ReqA), requirement_system_description(ReqA, SD).
+           Dependency Trace: all matched single-argument entities.
 
         ENTITY NAME INTEGRITY RULES (CRITICAL):
         - You MUST preserve exact spelling, capitalization, and spacing of all entity names as they appear in the knowledge base.
@@ -760,10 +854,6 @@ class Neo4jRAGSystem:
         Dependency Trace
         [list of single-argument entities, one per line, ending with '.']
 
-        Prolog-Based Rules
-        [requirement_* and reqrelated* facts, one per line, ending with '.']
-
-        Final Answer:
         """
 
         print("\n[OPTIMIZED LLM PROMPT]\n" + input_text)
@@ -839,7 +929,10 @@ class Neo4jRAGSystem:
 
         deps, facts, rules = [], [], []
 
-        dep_pred = re.compile(r'^(algorithm|model|sensors?|component|system_description)\s*\(.*\)\.?$', re.IGNORECASE)
+        dep_pred = re.compile(
+            r'^(algorithm|model|sensors?|sensor|actuator|actuators?|component|dataset|system_description)\s*\(.*\)\.?$',
+            re.IGNORECASE
+        )
         fact_pred = re.compile(r'^requirement_[A-Za-z0-9_]*\s*\(.*\)\.?$', re.IGNORECASE)
         rule_pred = re.compile(r'.*:-.*')
         reqrel_pred = re.compile(r'^reqrelated_[A-Za-z0-9_]*', re.IGNORECASE)
@@ -883,14 +976,14 @@ class Neo4jRAGSystem:
         out.extend(deps)
         out.append("")
 
-        if facts:
-            out.append("Prolog-Based Facts")
-            out.extend(facts)
-            out.append("")
-
-        if rules:
-            out.append("Prolog-Based Rules")
-            out.extend(rules)
+        # if facts:
+        #     out.append("Prolog-Based Facts")
+        #     out.extend(facts)
+        #     out.append("")
+        #
+        # if rules:
+        #     out.append("Prolog-Based Rules")
+        #     out.extend(rules)
 
         return "\n".join(out)
 
